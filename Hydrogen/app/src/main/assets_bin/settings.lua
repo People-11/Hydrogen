@@ -389,33 +389,53 @@ clickfunc["管理/android/data存储"] = function()
 
   import "android.content.Intent"
   import "android.net.Uri"
-  import "java.net.URLDecoder"
-  import "java.io.File"
-  import "android.provider.DocumentsContract"
   import "android.content.ComponentName"
-
   import "android.content.pm.PackageManager"
-  local resolve_intent = Intent(Intent.ACTION_GET_CONTENT).setType("text/plain").addCategory(Intent.CATEGORY_OPENABLE)
-  local info = this.getPackageManager().resolveActivity(resolve_intent, PackageManager.MATCH_DEFAULT_ONLY)
+
+  local pkgName = activity.getPackageName()
+  local uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata%2F" .. pkgName .. "%2Ffiles")
   
-  if not info or not info.activityInfo then
-    return 提示("无法找到系统文件管理器，请手动管理存储空间")
+  -- 尝试寻找系统文档管理器的包名
+  local resolve_intent = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*")
+  local info = activity.getPackageManager().resolveActivity(resolve_intent, 0)
+  local docPkg = (info and info.activityInfo) and info.activityInfo.packageName or "com.android.documentsui"
+
+  local function tryStart(intent)
+    return pcall(function() activity.startActivity(intent) end)
   end
-  
-  local packageName = info.activityInfo.packageName
-  local target_intent = Intent()
-  target_intent.setType("*/*")
-  local uri = Uri.parse("content://com.android.externalstorage.documents/document/primary%3AAndroid%2Fdata%2F"..activity.getPackageName().."%2Ffiles")
+
+  local target_intent = Intent(Intent.ACTION_VIEW)
   target_intent.setData(uri)
-  target_intent.setAction(Intent.ACTION_VIEW)
-  local componentName = ComponentName(packageName, "com.android.documentsui.files.FilesActivity")
-  target_intent.setComponent(componentName)
-  
-  local success, err = pcall(function() activity.startActivityForResult(target_intent, 1) end)
+  target_intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+
+  -- 策略1: 动态检测到的包名
+  target_intent.setComponent(ComponentName(docPkg, "com.android.documentsui.files.FilesActivity"))
+  local success = tryStart(target_intent)
+
+  -- 策略2: 尝试 Google 版包名
+  if not success and docPkg ~= "com.google.android.documentsui" then
+    target_intent.setComponent(ComponentName("com.google.android.documentsui", "com.android.documentsui.files.FilesActivity"))
+    success = tryStart(target_intent)
+  end
+
+  -- 策略3: 尝试无组件启动 (由系统匹配)
+  if not success then
+    target_intent.setComponent(nil)
+    success = tryStart(target_intent)
+  end
+
+  -- 策略4: 备选 Action (OPEN_DOCUMENT_TREE) - 这种方式最容易成功触发路径选择
+  if not success then
+    local treeUri = Uri.parse("content://com.android.externalstorage.documents/tree/primary%3AAndroid%2Fdata%2F" .. pkgName .. "%2Ffiles")
+    local treeIntent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)
+    treeIntent.putExtra("android.provider.extra.INITIAL_URI", treeUri)
+    success = tryStart(treeIntent)
+  end
+
   if success then
-    提示("已跳转，请自行管理")
-   else
-    提示("启动失败：" .. tostring(err))
+    提示("已尝试跳转，请在弹出的界面中管理文件")
+  else
+    提示("启动失败，请手动在文件管理器中管理存储空间")
   end
 end
 

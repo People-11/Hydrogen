@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- 使用tag传递数据。 -->
+    <item name="tag_first" type="id"/>
     <item name="tag_last_time" type="id"/>
     <item name="tag_txt_more_announce" type="id"/>
     <item name="fragment_container" type="id"/>

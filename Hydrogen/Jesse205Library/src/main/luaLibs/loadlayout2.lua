@@ -67,6 +67,8 @@ end
 -- table.insert(package.searchers,alyloader)
 
 local dm = context.getResources().getDisplayMetrics()
+local density = dm.density
+local scaled_density = dm.scaledDensity
 local id = 0x7f000000
 local toint = {
   -- android:drawingCacheQuality
@@ -260,8 +262,10 @@ local types = {
 }
 
 local function checkType(v)
-  local n, ty = string.match(v, "^(%-?[%.%d]+)(%a%a)$")
-  return tonumber(n), types[ty]
+  local n, ty = v:match("^(%-?[%.%d]+)(%a%a)$")
+  if n then
+    return tonumber(n), types[ty]
+  end
 end
 
 local function split(s, t)
@@ -296,18 +300,23 @@ end
 local function checkNumber(var)
   if type(var) == "string" then
     -- true与false不再使用string
-    if toint[var] then
-      return toint[var]
+    local val = toint[var]
+    if val then
+      return val
     end
 
     local i = checkint(var)
     if i then
       return i
     end
-    -- #XXX已去除
 
     local n, ty = checkType(var)
     if ty then
+      if ty == 1 then -- dp
+        return n * density + 0.5
+      elseif ty == 2 then -- sp
+        return n * scaled_density + 0.5
+      end
       return TypedValue.applyDimension(ty, n, dm)
     end
   end
@@ -389,30 +398,32 @@ local attributeSetterMap = {
     nowView.setContentDescription(nowValue)
   end,
   src = function()
-    if nowValue:find("^%?") then
-      nowView.setImageResource(getIdentifier(nowValue:sub(2, -1)))
+    local val = nowValue
+    if val:find("^%?") then
+      nowView.setImageResource(getIdentifier(val:sub(2, -1)))
      else
-      if not (nowValue:find("^/") or nowValue:find("^.+://")) then
-        nowValue = luadir .. "/" .. nowValue
+      if not (val:find("^/") or val:find("^.+://")) then
+        val = luadir .. "/" .. val
       end
-      Glide.with(context).load(nowValue).into(nowView)
+      Glide.with(context).load(val).into(nowView)
     end
   end,
   scaleType = function()
     nowView.setScaleType(scaleTypes[scaleType[nowValue]])
   end,
   background = function()
+    local val = nowValue
     if nowValueType == "string" then
-      if not nowValue:find("^/") then
-        nowValue = luadir .. "/" .. nowValue
+      if not val:find("^/") then
+        val = luadir .. "/" .. val
       end
-      if nowValue:find("%.9%.png") then
-        nowView.setBackground(NineBitmapDrawable(loadbitmap(nowValue)))
+      if val:find("%.9%.png") then
+        nowView.setBackground(NineBitmapDrawable(loadbitmap(val)))
        else
-        nowView.setBackground(LuaBitmapDrawable(context, nowValue))
+        nowView.setBackground(LuaBitmapDrawable(context, val))
       end
      elseif nowValueType == "userdata" or nowValueType == "number" then
-      nowView.setBackground(nowValue)
+      nowView.setBackground(val)
     end
   end,
   onClick = function() -- 设置onClick事件接口

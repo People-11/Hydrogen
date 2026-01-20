@@ -1,32 +1,36 @@
 require "import"
 import "mods.muk"
 import "com.lua.*"
-import "android.text.method.LinkMovementMethod"
-import "android.text.Html"
-import "java.net.URL"
-import "com.bumptech.glide.Glide"
 import "androidx.viewpager2.widget.ViewPager2"
-import "com.dingyi.adapter.BaseViewPage2Adapter"
-import "android.view.*"
-import "androidx.viewpager2.widget.ViewPager2$OnPageChangeCallback"
-import "android.webkit.WebChromeClient"
-import "android.content.pm.ActivityInfo"
-import "android.graphics.PathMeasure"
-import "android.webkit.ValueCallback"
-import "com.google.android.material.progressindicator.LinearProgressIndicator"
-import "androidx.core.view.ViewCompat"
 import "com.google.android.material.appbar.AppBarLayout"
+
+-- 预加载不直接涉及布局解析的 JNI 类
+local LinkMovementMethod = luajava.bindClass "android.text.method.LinkMovementMethod"
+local Html = luajava.bindClass "android.text.Html"
+local OnPageChangeCallback = luajava.bindClass "androidx.viewpager2.widget.ViewPager2$OnPageChangeCallback"
+local ColorDrawable = luajava.bindClass "android.graphics.drawable.ColorDrawable"
+local Paint = luajava.bindClass "android.graphics.Paint"
+local Path = luajava.bindClass "android.graphics.Path"
+local ArgbEvaluator = luajava.bindClass "android.animation.ArgbEvaluator"
 
 问题id, 回答id, pre_data = ...
 
 -- 核心优化：在布局渲染前立即设置窗口背景色，防止 Activity 启动瞬间白屏
-import "android.graphics.drawable.ColorDrawable"
-activity.getWindow().setBackgroundDrawable(ColorDrawable(转0x(backgroundc)))
+activity.getWindow().setBackgroundDrawable(ColorDrawable(backgroundc_int))
 
 设置视图("layout/answer")
 
 -- 优化：ViewPager2 容器也需要背景色
-pg.setBackgroundColor(转0x(backgroundc))
+pg.setBackgroundColor(backgroundc_int)
+
+-- 优化：缓存反射获取的对象，避免滑动时重复执行反射
+local recyclerViewField = ViewPager2.getDeclaredField("mRecyclerView")
+recyclerViewField.setAccessible(true)
+local pg_recyclerView = recyclerViewField.get(pg)
+local touchSlopField = luajava.bindClass("androidx.recyclerview.widget.RecyclerView").getDeclaredField("mTouchSlop")
+touchSlopField.setAccessible(true)
+local touchSlop = touchSlopField.get(pg_recyclerView)
+touchSlopField.set(pg_recyclerView, int(touchSlop * tonumber(activity.getSharedData("scroll_sense"))))
 
 -- 优化：将预加载逻辑移到设置视图之后，取消 task(1) 延迟，实现瞬间渲染
 if type(pre_data) == "table" then
@@ -56,24 +60,15 @@ print(dtl.height)]]
   local safeStatus=safeStatusView.layoutParams
   safeStatus.height=状态栏高度
   safeStatusView.setLayoutParams(safeStatus)
-  safeStatusView.setBackgroundColor(转0x(backgroundc))
+  safeStatusView.setBackgroundColor(backgroundc_int)
 end)
 
-local recyclerViewField = ViewPager2.getDeclaredField("mRecyclerView");
-recyclerViewField.setAccessible(true);
-local recyclerView = recyclerViewField.get(pg);
-local touchSlopField = RecyclerView.getDeclaredField("mTouchSlop");
-touchSlopField.setAccessible(true);
-local touchSlop = touchSlopField.get(recyclerView);
-touchSlopField.set(recyclerView, int(touchSlop*tonumber(activity.getSharedData("scroll_sense"))));--通过获取原有的最小滑动距离 *n来增加此值
-
 -- 解决标题闪烁：确保 toolbar 初始背景色和透明度正确
-root_card.setBackgroundColor(转0x(backgroundc))
-all_root.setAlpha(0) -- 这里保留，但我们确保它是紧跟在设置视图后的，后面获取数据后会立即更新
+root_card.setBackgroundColor(backgroundc_int)
+all_root.setAlpha(0) 
 
 --解决快速滑动出现的bug 点击停止滑动
 local AppBarLayoutBehavior=luajava.bindClass "com.hydrogen.AppBarLayoutBehavior"
---appbar.LayoutParams.behavior=AppBarLayoutBehavior(this,nil)
 IArgbEvaluator=ArgbEvaluator.newInstance()
 波纹({fh,_more,mark,comment,thank,voteup},"圆主题")
 波纹({all_root},"方自适应")
@@ -91,8 +86,8 @@ answer:getinfo(回答id, function(tab)
   _title.Text = tab.title
   expand_title.Text = tab.title
   -- 强制应用一次背景色，防止字符串解析问题导致的透明或白色
-  root_card.setBackgroundColor(转0x(backgroundc))
-  title_bar_expand.setBackgroundColor(转0x(backgroundc))
+  root_card.setBackgroundColor(backgroundc_int)
+  title_bar_expand.setBackgroundColor(backgroundc_int)
   
   if tab.answer_count == 1 and 回答容器 then
     回答容器.isleft = true
@@ -342,10 +337,10 @@ local function 更新底栏(data)
   local function 设置状态(status, iconview, textview, icon, count)
     if status then
       iconview.setImageBitmap(loadbitmap(图标(icon)))
-      textview.setTextColor(转0x(primaryc))
+      textview.setTextColor(primaryc_int)
      else
       iconview.setImageBitmap(loadbitmap(图标(icon.."_outline")))
-      textview.setTextColor(转0x(stextc))
+      textview.setTextColor(stextc_int)
     end
     textview.Text = tostring(count)
   end
@@ -542,9 +537,11 @@ end)
 
 function onDestroy()
   for k,v in pairs(数据表) do
-    v.ids.content.destroy()
-    System.gc()
+    if v.ids and v.ids.content then
+      v.ids.content.destroy()
+    end
   end
+  数据表 = nil
 end
 
 voteup.onClick=function()

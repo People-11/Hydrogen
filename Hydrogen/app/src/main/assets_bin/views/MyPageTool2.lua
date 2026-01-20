@@ -15,9 +15,24 @@ local Page_Tool={
   addpos=0,
 }--父类
 
+-- 缓存屏蔽词列表，减少 JNI 和正则开销
+local filter_words = nil
+local function get_filter_words()
+  if filter_words then return filter_words end
+  local raw = this.getSharedData("屏蔽词")
+  filter_words = {}
+  if raw and raw:gsub(" ","") ~= "" then
+    for word in raw:gmatch("%S+") do
+      filter_words[word] = true
+    end
+  end
+  return filter_words
+end
+
 local function contains_any(test_string)
-  for word in string.gmatch(this.getSharedData("屏蔽词"), "%S+") do
-    if string.find(test_string, word, 1, true) then
+  local words = get_filter_words()
+  for word in pairs(words) do
+    if test_string:find(word, 1, true) then
       return true
     end
   end
@@ -28,7 +43,7 @@ local function 加载屏蔽词(tab)
   if this.getSharedData("屏蔽词") and this.getSharedData("屏蔽词"):gsub(" ","")~="" then
     local mt = {
       __newindex = function(t, k, v)
-        local 匹配内容=tostring(v.标题)..tostring(v.预览内容)
+        local 匹配内容 = (v.标题 or "") .. (v.预览内容 or "")
         if contains_any(匹配内容) then
           return
         end
@@ -122,17 +137,17 @@ function Page_Tool:initPage()
       error("必须先设置当前页的adp")
     end
 
+    local glide_requests = Glide.with(this)
     thispage.addOnScrollListener(RecyclerView.OnScrollListener{
       onScrollStateChanged=function(recyclerView,newState)
         if newState == RecyclerView.SCROLL_STATE_DRAGGING or newState == RecyclerView.SCROLL_STATE_SETTLING then
-          Glide.with(this).pauseRequests();
+          glide_requests.pauseRequests();
          elseif newState == RecyclerView.SCROLL_STATE_IDLE then
-          Glide.with(this).resumeRequests();
+          glide_requests.resumeRequests();
           local lastVisiblePosition = manager.findLastVisibleItemPosition();
           if lastVisiblePosition >= manager.getItemCount() - 1 and pagedata[pos]["canload"] then
-            local pos=self:getCurrentItem()
-            self.referfunc(pos,false)
-            System.gc()
+            local current_pos = self:getCurrentItem()
+            self.referfunc(current_pos, false)
           end
         end
     end});
@@ -278,16 +293,6 @@ function Page_Tool:setOnTabListener(callback)
   return self
 end
 
-local function checkIfRecyclerViewIsFullPage(recyclerView)
-  local layoutManager = recyclerView.getLayoutManager();
-  local lastVisiblePosition = layoutManager.findLastVisibleItemPosition();
-  local totalItemCount = recyclerView.getAdapter().getItemCount();
-  if lastVisiblePosition >= totalItemCount - 1 then
-    return true;
-  end
-  return false;
-end
-
 function Page_Tool:createfunc()
 
   if self.referfunc then
@@ -390,10 +395,10 @@ function Page_Tool:createfunc()
             --延迟 防止获取不准确
             self.view.postDelayed(Runnable{
               run=function()
-                if checkIfRecyclerViewIsFullPage(thispage) then
+                local layoutManager = thispage.getLayoutManager();
+                if layoutManager.findLastVisibleItemPosition() >= layoutManager.getItemCount() - 1 then
                   if pagedata[pos]["canload"] then
                     self.referfunc(pos,isprev)
-                    System.gc()
                   end
                  else
                   pagedata[pos].needcheck=false

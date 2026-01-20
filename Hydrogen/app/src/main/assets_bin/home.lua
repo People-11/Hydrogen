@@ -17,7 +17,30 @@ import "androidx.core.view.insets.ProtectionLayout"
 import "androidx.core.view.insets.Protection"
 import "androidx.core.view.WindowInsetsCompat"
 
---导入 MyViewPager
+-- 局部变量缓存，减少全局查找开销
+local View = View
+local Context = Context
+local SystemClock = SystemClock
+local Build = Build
+local Gravity = Gravity
+local Boolean = Boolean
+local PackageManager = PackageManager
+local ViewTreeObserver = ViewTreeObserver
+local TabLayout = TabLayout
+local ViewPager = ViewPager
+local AlertDialog = AlertDialog
+local Intent = Intent
+local Runtime = Runtime
+local System = System
+local tonumber = tonumber
+local tostring = tostring
+local ipairs = ipairs
+local pairs = pairs
+local table = table
+local os = os
+local math = math
+
+-- 导入 MyViewPager
 MyViewPager = require "views/MyViewPager"
 
 task(1, function()
@@ -280,7 +303,7 @@ nav.addHeaderView(loadlayout {
         {
           TextView;
           layout_marginTop="10dp";
-          layout_height="30dp";
+          layout_height="-2";
           layout_width="-2";
           Text="未登录，点击登录",
           id="名字id",
@@ -289,21 +312,21 @@ nav.addHeaderView(loadlayout {
           paddingLeft="16dp";
           layout_marinBottom="15dp",
           Typeface=字体("product-Bold");
-          SingleLine=true;
           gravity="center|left";
         };
 
         {
           TextView;
           layout_width="-2";
+          layout_height="-2";
           Text="获取失败";
           textColor=primaryc;
           id="签名id",
           textSize="15sp";
           paddingLeft="16dp";
+          paddingRight="16dp";
 
           Typeface=字体("product");
-          SingleLine=true;
           gravity="center|left";
         };
         {

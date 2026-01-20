@@ -155,236 +155,306 @@ local function 多选菜单(data, views)
   return true
 end
 
+-- 预加载 JNI 类
+local MotionEvent = luajava.bindClass "android.view.MotionEvent"
+local ObjectAnimator = luajava.bindClass "android.animation.ObjectAnimator"
+local AnimatorSet = luajava.bindClass "android.animation.AnimatorSet"
+local AnticipateOvershootInterpolator = luajava.bindClass "android.view.animation.AnticipateOvershootInterpolator"
+local LinkMovementMethod = luajava.bindClass "android.text.method.LinkMovementMethod"
+local Path = luajava.bindClass "android.graphics.Path"
+local Paint = luajava.bindClass "android.graphics.Paint"
+
+local function MyClickableSpan(url)
+  return ClickableSpan{
+    onClick=function(v)
+      if v.Text:find("图片") or v.Text:find("动图") then
+        this.setSharedData("imagedata", luajson.encode({["0"]=url, ["1"]=1}))
+        activity.newActivity("image")
+        return true
+      end
+      检查链接(url)
+    end,
+    updateDrawState=function(v)
+      v.setColor(v.linkColor)
+      v.setUnderlineText(true)
+    end
+  }
+end
+
+function base.resolvedata(v, data)
+  local author = v.author
+  local content = v.content:gsub("</p>+$", ""):gsub("^<p>", "")
+  local name = author.name
+  
+  if v.reply_to_author then
+    name = name .. " -> " .. v.reply_to_author.name
+    if v.reply_author_tag and v.reply_author_tag[1] then
+      name = name .. "「" .. v.reply_author_tag[1].text .. "」"
+    end
+  end
+  if v.author_tag and v.author_tag[1] then
+    name = name .. "「" .. v.author_tag[1].text .. "」"
+  end
+
+  local myspan
+  local has_url, has_img = false, nil
+  if content:find("http") then
+    local style = SpannableStringBuilder(Html.fromHtml(content))
+    local spans = luajava.astable(style.getSpans(0, style.length(), URLSpan))
+    has_url = true
+    for _, span in ipairs(spans) do
+      local url = span.getURL()
+      style.setSpan(MyClickableSpan(url), style.getSpanStart(span), style.getSpanEnd(span), Spannable.SPAN_EXCLUSIVE_INCLUSIVE)
+      if url:lower():match("%.(jpg|gif|bmp|png|webp|jpeg)$") then has_img = url end
+    end
+    style.removeSpan(spans)
+    myspan = style
+   else
+    myspan = Html.fromHtml(content)
+  end
+
+  if content:find("%[.-%]") then
+    for i, d in pairs(zemoji) do
+      Spannable_Image(myspan, "\\["..i.."\\]", d)
+    end
+  end
+
+  local time = 时间戳(v.created_time)
+  pcall(function()
+    if v.comment_tag and v.comment_tag[1] and v.comment_tag[1].type == "ip_info" then
+      time = v.comment_tag[1].text .. " · " .. time
+    end
+  end)
+
+  table.insert(data, {
+    评论 = (v.child_comment_count and v.child_comment_count > 0) and tostring(v.child_comment_count) or "false",
+    id内容 = tostring(v.id),
+    作者id = author.id,
+    预览内容 = myspan,
+    标题 = name,
+    图像 = author.avatar_url,
+    赞 = tostring(v.like_count),
+    时间 = time,
+    like_count = v.like_count,
+    can_delete = v.can_delete,
+    liked = v.liked,
+    disliked = v.disliked,
+    包含url = has_url,
+    包含图片 = has_img
+  })
+end
+
+local function 多选菜单(data, views)
+  local id内容 = data.id内容
+  local menu = {
+    {"分享", function() 分享文本(data.预览内容.toString()) end},
+    {"复制", function()
+        activity.getSystemService(Context.CLIPBOARD_SERVICE).setText(data.预览内容.toString())
+        提示("复制文本成功")
+    end},
+    { data.disliked and "取消踩" or "踩评论", function()
+        if not getLogin() then return 提示("请登录后使用本功能") end
+        local method = data.disliked and zHttp.delete or zHttp.put
+        method("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/dislike", '', postapphead, function(code)
+          if code == 200 then
+            提示(data.disliked and "取消踩成功" or "踩成功")
+            data.disliked = not data.disliked
+          end
+        end)
+    end},
+    { data.liked and "取消赞" or "赞评论", function()
+        if not getLogin() then return 提示("请登录后使用本功能") end
+        local method = data.liked and zHttp.delete or zHttp.put
+        method("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/like", '', postapphead, function(code)
+          if code == 200 then
+            提示(data.liked and "取消赞成功" or "赞成功")
+            data.liked = not data.liked
+          end
+        end)
+    end},
+    {"举报", function()
+        local url = "https://www.zhihu.com/report?id="..id内容.."&type=comment"
+        newActivity("browser", {url.."&source=android&ab_signature=", "举报"})
+    end},
+    {"屏蔽", function()
+        if not getLogin() then return 提示("请登录后使用本功能") end
+        AlertDialog.Builder(this).setTitle("提示").setMessage("确定拉黑该用户吗？")
+        .setPositiveButton("确定", {onClick=function()
+            zHttp.post("https://api.zhihu.com/settings/blocked_users", "people_id="..data.作者id, apphead, function(code)
+              if code == 200 or code == 201 then 提示("已拉黑") end
+            end)
+        end}).setNegativeButton("取消", nil).show()
+    end},
+    {"查看主页", function() newActivity("people", {data.作者id}) end}
+  }
+
+  if isstart then
+    table.insert(menu, {"回复评论", function() 发送评论(id内容, "回复"..data.标题) end})
+  end
+
+  showPopMenu(menu).showAsDropDown(views, downx, 0)
+  return true
+end
+
 function base.getAdapter(comment_pagetool,pos)
   local data=comment_pagetool:getItemData(pos)
-  local item_layout = comment_pagetool.adapters_func_config.item_layout -- 从配置中获取布局
+  local item_layout = comment_pagetool.adapters_func_config.item_layout
+  local downx, downy
+  local interpolator = AnticipateOvershootInterpolator(0.1)
+
+  -- 统一复用动画逻辑
+  local function setChipAnim(view, isDown, views)
+    local targetRad = isDown and 4 or 16
+    local targetPad = isDown and 16 or 8
+    local otherPad = isDown and 6 or 8
+    local targetView = views.赞 == view and views.赞 or views.评论
+    local otherView = views.赞 == view and views.评论 or views.赞
+    
+    local animSet = AnimatorSet()
+    animSet.setInterpolator(interpolator)
+    animSet.setDuration(200)
+    animSet.play(ObjectAnimator.ofFloat(targetView, "ChipCornerRadius", {targetView.ChipCornerRadius, dp2px(targetRad)}))
+    .with(ObjectAnimator.ofFloat(targetView, "ChipStartPadding", {targetView.ChipStartPadding, dp2px(targetPad)}))
+    .with(ObjectAnimator.ofFloat(targetView, "ChipEndPadding", {targetView.ChipEndPadding, dp2px(targetPad)}))
+    .with(ObjectAnimator.ofFloat(otherView, "ChipStartPadding", {otherView.ChipStartPadding, dp2px(otherPad)}))
+    .with(ObjectAnimator.ofFloat(otherView, "ChipEndPadding", {otherView.ChipEndPadding, dp2px(otherPad)}))
+    animSet.start()
+  end
+
+  -- 预定义复用监听器
+  local onChipTouch = function(v, e)
+    local views = v.getTag()
+    if e.action == MotionEvent.ACTION_DOWN then
+      v.setTag(R.id.tag_last_time, "t")
+      setChipAnim(v, true, views)
+    elseif e.action == MotionEvent.ACTION_UP or e.action == MotionEvent.ACTION_CANCEL then
+      if v.getTag(R.id.tag_last_time) == "t" then
+        v.setTag(R.id.tag_last_time, "off")
+        setChipAnim(v, false, views)
+      end
+    end
+    return false
+  end
+
+  local onVoteClick = function(v)
+    local views = v.getTag()
+    local item = data[views.card.getTag(R.id.tag_first) + 1]
+    local id内容 = item.id内容
+    if not item.liked then
+      zHttp.put("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/like",'',postapphead,function(code)
+        if code==200 then
+          提示("赞成功")
+          item.liked=true
+          item.like_count=item.like_count+1
+          views.赞.ChipIcon=liked_drawable
+          views.赞.text=item.like_count..""
+        end
+      end)
+    else
+      zHttp.delete("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/like",postapphead,function(code)
+        if code==200 then
+          提示("取消赞成功")
+          item.liked=false
+          item.like_count=item.like_count-1
+          views.赞.ChipIcon=like_drawable
+          views.赞.text=item.like_count..""
+        end
+      end)
+    end
+  end
+
+  local onReplyClick = function(v)
+    local views = v.getTag()
+    local item = data[views.card.getTag(R.id.tag_first) + 1]
+    发送评论(item.id内容, "回复"..item.标题.."发送的评论")
+  end
+
+  local onAuthorClick = function(v)
+    local views = v.getTag()
+    local item = data[views.card.getTag(R.id.tag_first) + 1]
+    nTView = views.图像
+    newActivity("people", {item.作者id})
+  end
+
+  local onCardClick = function(v)
+    local views = v.getTag()
+    local item = data[views.card.getTag(R.id.tag_first) + 1]
+    if item.评论 == "false" then return end
+    if comment_type=="comments" then return 提示("当前已在该对话列表内") end
+    nTView = views.card
+    newActivity("comment", {item.id内容, "comments", 保存路径, comment_id})
+  end
+
   return LuaCustRecyclerAdapter(AdapterCreator({
-
-    getItemCount=function()
-      return #data
-    end,
-
-    getItemViewType=function(position)
-      return 0
-    end,
-
+    getItemCount=function() return #data end,
+    getItemViewType=function() return 0 end,
     onCreateViewHolder=function(parent,viewType)
       local views={}
       local holder=LuaCustRecyclerHolder(loadlayout(item_layout,views))
       holder.view.setTag(views)
+      views.card.setTag(views)
+      views.赞.setTag(views)
+      views.评论.setTag(views)
+      views.author_lay.setTag(views)
+      
+      views.赞.onTouch = onChipTouch
+      views.评论.onTouch = onChipTouch
+      views.赞.onClick = onVoteClick
+      views.评论.onClick = onReplyClick
+      views.author_lay.onClick = onAuthorClick
+      views.card.onClick = onCardClick
+      views.预览内容.onClick = function() views.card.performClick() end
+      views.card.onTouch = function(v,e) downx, downy = e.x, e.y end
+      views.card.onLongClick = function(v) 
+        local pos = v.getTag(R.id.tag_first)
+        多选菜单(data[pos+1], v)
+        return true
+      end
       return holder
     end,
 
     onBindViewHolder=function(holder,position)
       local views=holder.view.getTag()
-      local data=data[position+1]
-      local type=data.datatype
-      local 标题=data.标题
-      local 预览内容=data.预览内容
-      local 预览图片=data.包含图片
-      local id内容=data.id内容
-      local 评论=data.评论
-      local 作者id=data.作者id
-      local 图像=data.图像
-      local 时间=data.时间
-      local 赞=data.赞
-      local isme=data.isme
+      local item=data[position+1]
 
-      views.标题.text=标题
-      views.时间.text=时间
-      views.赞.text=赞
-      views.评论.text=评论
-      views.预览内容.text=预览内容
-      loadglide(views.图像,图像)
-      --[[if 预览图片
-        loadglide(views.预览图片,预览图片)
-        views.预览图片.onClick=function()
-          nTView=views.预览图片
-          this.setSharedData("imagedata",luajson.encode(预览图片))
-        activity.newActivity("image")
-        end
-      end]]
+      views.标题.text=item.标题
+      views.时间.text=item.时间
+      views.赞.text=item.赞
+      views.评论.text=item.评论
+      views.预览内容.text=item.预览内容
+      loadglide(views.图像,item.图像)
 
-      if 评论~="false"then
-        views.评论.visibility=0
-       else
-        views.评论.visibility=8
+      views.评论.visibility = item.评论~="false" and 0 or 8
+      views.赞.ChipIcon = item.liked and liked_drawable or like_drawable
+      views.card.setTag(R.id.tag_first, position)
 
-      end
-      if (data.liked)
-        views.赞.ChipIcon=liked_drawable
-       else
-        views.赞.ChipIcon=like_drawable
-      end
-      import "android.view.MotionEvent"
-      import "android.animation.ObjectAnimator"
-
-      views.赞.onTouch=function(v,e)
-        local action = e.action
-        if action == MotionEvent.ACTION_DOWN then
-          赞set=AnimatorSet()
-          赞set.setInterpolator(AnticipateOvershootInterpolator(0.1))
-          赞set.setDuration(200)
-          赞set.play(ObjectAnimator.ofFloat(views.赞, "ChipCornerRadius", {views.赞.ChipCornerRadius, dp2px(4)}))
-          .with(ObjectAnimator.ofFloat(views.赞, "ChipStartPadding", {views.赞.ChipStartPadding, dp2px(16)}))
-          .with(ObjectAnimator.ofFloat(views.赞, "ChipEndPadding", {views.赞.ChipEndPadding, dp2px(16)}))
-          .with(ObjectAnimator.ofFloat(views.评论, "ChipStartPadding", {views.评论.ChipStartPadding, dp2px(6)}))
-          .with(ObjectAnimator.ofFloat(views.评论, "ChipEndPadding", {views.评论.ChipEndPadding, dp2px(6)}))
-          views.赞.tag="t"
-          赞set.start()
-         else
-          if views.赞.tag=="t"
-            views.赞.tag="off"
-            task(200,function()
-              赞set=AnimatorSet()
-              赞set.setInterpolator(AnticipateOvershootInterpolator(0.1))
-              赞set.setDuration(200)
-              赞set.play(ObjectAnimator.ofFloat(views.赞, "ChipCornerRadius", {views.赞.ChipCornerRadius, dp2px(16)}))
-              .with(ObjectAnimator.ofFloat(views.赞, "ChipStartPadding", {views.赞.ChipStartPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.赞, "ChipEndPadding", {views.赞.ChipEndPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.评论, "ChipStartPadding", {views.评论.ChipStartPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.评论, "ChipEndPadding", {views.评论.ChipEndPadding, dp2px(8)}))
-
-              赞set.start()
-            end)
-          end
-        end
-        return false
-      end
-      views.评论.onTouch=function(v,e)
-        local action = e.action
-        if action == MotionEvent.ACTION_DOWN then
-          views.评论.tag="t"
-          评论set=AnimatorSet()
-          评论set.setInterpolator(AnticipateOvershootInterpolator(0.1))
-          评论set.setDuration(200)
-          评论set.play(ObjectAnimator.ofFloat(views.评论, "ChipCornerRadius", {views.评论.ChipCornerRadius, dp2px(4)}))
-          .with(ObjectAnimator.ofFloat(views.评论, "ChipStartPadding", {views.评论.ChipStartPadding, dp2px(16)}))
-          .with(ObjectAnimator.ofFloat(views.评论, "ChipEndPadding", {views.评论.ChipEndPadding, dp2px(16)}))
-          .with(ObjectAnimator.ofFloat(views.赞, "ChipStartPadding", {views.赞.ChipStartPadding, dp2px(6)}))
-          .with(ObjectAnimator.ofFloat(views.赞, "ChipEndPadding", {views.赞.ChipEndPadding, dp2px(6)}))
-
-          评论set.start()
-         else
-          if views.评论.tag=="t"
-            views.评论.tag="off"
-            task(200,function()
-              评论set=AnimatorSet()
-              评论set.setInterpolator(AnticipateOvershootInterpolator(0.1))
-              评论set.setDuration(200)
-              评论set.play(ObjectAnimator.ofFloat(views.评论, "ChipCornerRadius", {views.评论.ChipCornerRadius, dp2px(16)}))
-              .with(ObjectAnimator.ofFloat(views.评论, "ChipStartPadding", {views.评论.ChipStartPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.评论, "ChipEndPadding", {views.评论.ChipEndPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.赞, "ChipStartPadding", {views.赞.ChipStartPadding, dp2px(8)}))
-              .with(ObjectAnimator.ofFloat(views.赞, "ChipEndPadding", {views.赞.ChipEndPadding, dp2px(8)}))
-
-              评论set.start()
-            end)
-          end
-        end
-        return false
-      end
-      if comment_type=="comments"&&position==0
-        local layoutParams = views.line.LayoutParams;
-        layoutParams.height=dp2px(24)
-        views.line.setLayoutParams(layoutParams);
-        --感谢可爱的喵立方
-        function draw_sin(canvas, x, y, length, height, periods, paint)
-          local path = Path()
-          local density = 40
-          for i = 0, 1, 1 / periods / density do
-            path.lineTo(i * length, math.sin(i * periods * math.pi * 2) * height)
-          end
-          path.offset(x, y)
-          canvas.drawPath(path, paint)
-        end
-
-        local paint_qwq = Paint()
-        paint_qwq.setColor(res.color.attr.colorSurfaceVariant)
-        paint_qwq.setStrokeWidth(dp2px(1.5))
-        paint_qwq.setStyle(Paint.Style.STROKE)
-        paint_qwq.setStrokeCap(Paint.Cap.ROUND)
-
-        views.line.setBackground(LuaDrawable(
-        function(canvas, paint, drawable)
-          canvas.drawColor(转0x(backgroundc))
-          draw_sin(canvas, 0, views.line.height/2, views.line.width, views.line.height/4, 8, paint_qwq)
-        end
-        ))
-
-
-
-
-        --[[已有加粗分割线，没必要 elseif comment_type=="comments"
-        local layoutParams = views.card.LayoutParams;
-        layoutParams.setMargins(dp2px(20), layoutParams.rightMargin, layoutParams.rightMargin,layoutParams.bottomMargin);
-        views.card.setLayoutParams(layoutParams);]]
-      end
-      views.评论.onClick=function()
-        发送评论(id内容,"回复"..data.标题.."发送的评论")
-      end
-      views.赞.onClick=function()
-        if not(data.liked)
-          zHttp.put("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/like",'',postapphead,function(code,content)
-            if code==200 then
-              提示("赞成功")
-              data.liked=true
-              data.like_count=data.like_count+1
-              views.赞.ChipIcon=liked_drawable
-              views.赞.text=data.like_count..""
-
-            end
-          end)
-         else
-          zHttp.delete("https://api.zhihu.com/comment_v5/comment/"..id内容.."/reaction/like",postapphead,function(code,content)
-            if code==200 then
-              提示("取消赞成功")
-              data.liked=false
-              data.like_count=data.like_count-1
-              views.赞.ChipIcon=like_drawable
-              views.赞.text=data.like_count..""
-            end
-          end)
-        end
-      end
-
-
-
-
-      views.author_lay.onClick=function()
-        nTView=views.图像
-        newActivity("people",{data.作者id})
-      end
-
-      views.card.onTouch=function(v,event)
-        downx=event.getX()
-        downy=event.getY()
-      end
-      views.card.onClick=function()
-        if 评论=="false" then
-          return
-         else
-          if comment_type=="comments" then
-            return 提示("当前已在该对话列表内")
-          end
-        end
-        nTView=views.card
-        newActivity("comment",{data.id内容,"comments",保存路径,comment_id})
-      end
-      views.预览内容.onClick=function()
-        views.card.performClick()
-      end
-      views.card.onLongClick=function(view)
-        多选菜单(data,view)
-      end
-
-      if data.包含url then
+      if item.包含url then
         views.预览内容.MovementMethod=LinkMovementMethod.getInstance()
       end
-
+      
+      -- 波浪线特殊逻辑
+      if comment_type=="comments" and position==0 then
+        local lp = views.line.LayoutParams
+        lp.height=dp2px(24)
+        views.line.setLayoutParams(lp)
+        local paint = Paint()
+        paint.setColor(res.color.attr.colorSurfaceVariant)
+        paint.setStrokeWidth(dp2px(1.5))
+        paint.setStyle(Paint.Style.STROKE)
+        paint.setStrokeCap(Paint.Cap.ROUND)
+        views.line.setBackground(LuaDrawable(function(canvas, p, d)
+          canvas.drawColor(backgroundc_int)
+          local path = Path()
+          local density = 40
+          for i = 0, 1, 1 / 8 / density do
+            path.lineTo(i * views.line.width, math.sin(i * 8 * math.pi * 2) * (views.line.height/4))
+          end
+          path.offset(0, views.line.height/2)
+          canvas.drawPath(path, paint)
+        end))
+      end
     end,
   }))
-
 end
 
 function base:initpage(view,sr,item_layout)

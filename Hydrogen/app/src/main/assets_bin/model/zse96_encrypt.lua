@@ -93,6 +93,10 @@ local XZSE96V3 = {
   }
 }
 
+-- 局部化 mapping 提升高频访问速度
+local mapping_zb = XZSE96V3.mapping.zb
+local mapping_zk = XZSE96V3.mapping.zk
+
 -- 左移运算（32位）
 function XZSE96V3.left_shift(x, shift)
   shift = shift % 32
@@ -113,47 +117,55 @@ end
 
 -- 变换 32 位整数：
 -- 1. 将整数打包成 4 字节；
--- 2. 利用 mapping["zb"] 替换每个字节（注意 Lua 数组从1开始，所以索引 +1）；
+-- 2. 利用 mapping_zb 替换每个字节；
 -- 3. 将4字节还原成整数 r，然后 r 异或多个旋转结果。
 function XZSE96V3.transform_value(e)
-  local packed = int32_to_bytes(e)
-  local transformed = {}
-  for i = 1, #packed do
-    transformed[i] = XZSE96V3.mapping["zb"][ packed[i] + 1 ]
-  end
-  local r = bytes_to_int32(transformed)
-  local rx2 = XZSE96V3.rotate_xor(r, 2)
-  local rx10 = XZSE96V3.rotate_xor(r, 10)
-  local rx18 = XZSE96V3.rotate_xor(r, 18)
-  local rx24 = XZSE96V3.rotate_xor(r, 24)
+  -- 直接位运算提取字节，避免调用函数和创建 Table
+  local b1 = mapping_zb[ (bit32.rshift(e, 24) % 256) + 1 ]
+  local b2 = mapping_zb[ (bit32.rshift(e, 16) % 256) + 1 ]
+  local b3 = mapping_zb[ (bit32.rshift(e, 8) % 256) + 1 ]
+  local b4 = mapping_zb[ (e % 256) + 1 ]
+  
+  -- 快速合并字节为 32 位整数
+  local r = (b1 * 16777216) + (b2 * 65536) + (b3 * 256) + b4
+  
+  -- 旋转异或
+  local rx2 = bit32.bor(bit32.lshift(r, 2), bit32.rshift(r, 30))
+  local rx10 = bit32.bor(bit32.lshift(r, 10), bit32.rshift(r, 22))
+  local rx18 = bit32.bor(bit32.lshift(r, 18), bit32.rshift(r, 14))
+  local rx24 = bit32.bor(bit32.lshift(r, 24), bit32.rshift(r, 8))
+  
   return bit32.bxor(r, rx2, rx10, rx18, rx24)
 end
 
 -- 对 16 字节的数据块进行加密变换。
--- 1. 将数据块解包为四个 32 位整数；
--- 2. 进行 32 轮处理后，将最后 4 个整数打包成 16 字节数据返回。
 function XZSE96V3.transform_block(data)
-  local function bytes_to_int32_range(tbl, start)
-    return (((tbl[start] * 256 + tbl[start+1]) * 256) + tbl[start+2]) * 256 + tbl[start+3]
-  end
-  local w0 = bytes_to_int32_range(data, 1)
-  local w1 = bytes_to_int32_range(data, 5)
-  local w2 = bytes_to_int32_range(data, 9)
-  local w3 = bytes_to_int32_range(data, 13)
-  local words = {w0, w1, w2, w3}
+  -- 直接解包 4 个整数
+  local words = {
+    (data[1] * 16777216) + (data[2] * 65536) + (data[3] * 256) + data[4],
+    (data[5] * 16777216) + (data[6] * 65536) + (data[7] * 256) + data[8],
+    (data[9] * 16777216) + (data[10] * 65536) + (data[11] * 256) + data[12],
+    (data[13] * 16777216) + (data[14] * 65536) + (data[15] * 256) + data[16]
+  }
+  
+  local tv = XZSE96V3.transform_value
+  local bxor = bit32.bxor
   for r = 1, 32 do
-    local zk_val = XZSE96V3.mapping["zk"][r]
-    local temp = bit32.bxor(words[r+1], words[r+2], words[r+3], zk_val)
-    local transformed = XZSE96V3.transform_value(temp)
-    words[r+4] = bit32.bxor(words[r], transformed)
+    local temp = bxor(words[r+1], words[r+2], words[r+3], mapping_zk[r])
+    words[r+4] = bxor(words[r], tv(temp))
   end
-  local res_words = {words[36], words[35], words[34], words[33]}
+  
   local result = {}
-  for _, word in ipairs(res_words) do
-    local b = int32_to_bytes(word)
-    for _, byte in ipairs(b) do
-      table.insert(result, byte)
-    end
+  local r36, r35, r34, r33 = words[36], words[35], words[34], words[33]
+  
+  -- 快速展开打包到结果表
+  local res_w = {r36, r35, r34, r33}
+  for i=1, 4 do
+    local w = res_w[i]
+    table.insert(result, bit32.rshift(w, 24) % 256)
+    table.insert(result, bit32.rshift(w, 16) % 256)
+    table.insert(result, bit32.rshift(w, 8) % 256)
+    table.insert(result, w % 256)
   end
   return result
 end
@@ -265,8 +277,12 @@ function XZSE96V3.b64encode(md5_bytes, device, seed)
     table.insert(combined, 0)
   end
 
-  local result = ""
+  local result_table = {}
   local shift_counter = 0
+  local sub = XZSE96V3.base64_chars.sub
+  local rshift = bit32.rshift
+  local band = bit32.band
+  
   for i = #combined, 3, -3 do
     local b0 = bit32.bxor(combined[i], XZSE96V3.unsigned_right_shift(58, 8 * (shift_counter % 4)))
     shift_counter = shift_counter + 1
@@ -275,14 +291,14 @@ function XZSE96V3.b64encode(md5_bytes, device, seed)
     local b2 = bit32.bxor(combined[i-2], XZSE96V3.unsigned_right_shift(58, 8 * (shift_counter % 4)))
     shift_counter = shift_counter + 1
     local num = b0 + bit32.lshift(b1, 8) + bit32.lshift(b2, 16)
-    local c1 = XZSE96V3.base64_chars:sub((num & 63) + 1, (num & 63) + 1)
-    local c2 = XZSE96V3.base64_chars:sub((bit32.rshift(num, 6) & 63) + 1, (bit32.rshift(num, 6) & 63) + 1)
-    local c3 = XZSE96V3.base64_chars:sub((bit32.rshift(num, 12) & 63) + 1, (bit32.rshift(num, 12) & 63) + 1)
-    local c4 = XZSE96V3.base64_chars:sub((bit32.rshift(num, 18) & 63) + 1, (bit32.rshift(num, 18) & 63) + 1)
-    result = result .. c1 .. c2 .. c3 .. c4
+    
+    table.insert(result_table, sub(XZSE96V3.base64_chars, (num & 63) + 1, (num & 63) + 1))
+    table.insert(result_table, sub(XZSE96V3.base64_chars, (rshift(num, 6) & 63) + 1, (rshift(num, 6) & 63) + 1))
+    table.insert(result_table, sub(XZSE96V3.base64_chars, (rshift(num, 12) & 63) + 1, (rshift(num, 12) & 63) + 1))
+    table.insert(result_table, sub(XZSE96V3.base64_chars, (rshift(num, 18) & 63) + 1, (rshift(num, 18) & 63) + 1))
   end
 
-  return result
+  return table.concat(result_table)
 end
 
 -- 解码函数：

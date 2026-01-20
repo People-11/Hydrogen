@@ -27,6 +27,22 @@ local luajava_bindClass = luajava.bindClass
 local luajava_override = luajava.override
 local luajava_astable = luajava.astable
 
+-- 预加载高频 Java 类，减少 JNI 开销
+local ColorStateList = luajava_bindClass "android.content.res.ColorStateList"
+local IntArray = int[0].class
+local Bitmap = luajava_bindClass "android.graphics.Bitmap"
+local BitmapFactory = luajava_bindClass "android.graphics.BitmapFactory"
+local BitmapDrawable = luajava_bindClass "android.graphics.drawable.BitmapDrawable"
+local PorterDuffColorFilter = luajava_bindClass "android.graphics.PorterDuffColorFilter"
+local PorterDuff = luajava_bindClass "android.graphics.PorterDuff"
+local Base64 = luajava_bindClass "android.util.Base64"
+local TypedValue = luajava_bindClass "android.util.TypedValue"
+
+-- 预缓存高频函数和状态
+local os_time = os.time
+local os_date = os.date
+local current_year = os_date("%Y", os_time())
+
 initApp=true
 useCustomAppToolbar=true
 import "jesse205"
@@ -347,11 +363,7 @@ end
 
 function base64ToBitmap(encodedImage)
   local prefix = "data:image/png;base64,"
-  local imageData = string.sub(encodedImage, #prefix + 1)
-
-  local Base64 = luajava_bindClass "android.util.Base64"
-  local BitmapFactory = luajava_bindClass "android.graphics.BitmapFactory"
-
+  local imageData = encodedImage:sub(#prefix + 1)
   local decodedImage = Base64.decode(imageData, Base64.DEFAULT)
   return BitmapFactory.decodeByteArray(decodedImage, 0, #decodedImage)
 end
@@ -557,22 +569,17 @@ function Ripple(id,color,t)
 end
 
 function 时间戳(t)
-  if not t then
-    return nil
+  if not t then return nil end
+  local nowtime = os_time()
+  local between = nowtime - t
+  if between < 3600 then -- 一小时
+    return tointeger(between / 60 + 0.5) .. " 分钟前"
+  elseif between < 86400 then -- 一天
+    return tointeger(between / 3600 + 0.5) .. " 小时前"
+  elseif current_year == os_date("%Y", t) then
+    return os_date("%m-%d", t)
   end
-  --local t=t/1000
-  local nowtime=os.time()
-  local between=nowtime-t
-  if nowtime-t<60*60 then --一小时
-    local min = between % 3600 / 60
-    return tointeger(min+0.5).." 分钟前"
-   elseif nowtime-t<24*60*60 then --一天
-    local hours = between % (24 * 3600) / 3600
-    return tointeger(hours+0.5).." 小时前"
-   elseif tonumber(os.date("%Y",os.time()))==tonumber(os.date("%Y",t)) then
-    return os.date("%m-%d",t)
-  end
-  return os.date("%Y-%m-%d",t)
+  return os_date("%Y-%m-%d", t)
 end
 
 function processTable(userdataTable)
@@ -600,24 +607,23 @@ function processTable(userdataTable)
   return resultTable
 end
 
-function dp2px(dpValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
-  return dpValue * scale + 0.5
+local real_scale = activity.getResources().getDisplayMetrics().density
+local scaled_density = activity.getResources().getDisplayMetrics().scaledDensity
+
+function dp2px(dpValue)
+  return dpValue * real_scale + 0.5
 end
 
-function px2dp(pxValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
-  return pxValue / scale + 0.5
+function px2dp(pxValue)
+  return pxValue / real_scale + 0.5
 end
 
-function px2sp(pxValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
-  return pxValue / scale + 0.5
+function px2sp(pxValue)
+  return pxValue / scaled_density + 0.5
 end
 
-function sp2px(spValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
-  return spValue * scale + 0.5
+function sp2px(spValue)
+  return spValue * scaled_density + 0.5
 end
 rccolumn=px2dp(activity.getWidth()/2)//300
 
@@ -795,15 +801,36 @@ function dec2hex(n)
   return hex_str
 end
 
+activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS).setStatusBarColor(0);
+
+function 转0x(j,isAndroid)
+  if #j==7 then
+    jj=j:match("#(.+)")
+    jjj=tonumber("0xff"..jj)
+   else
+    jj=j:match("#(.+)")
+    jjj=tonumber("0x"..jj)
+  end
+  -- 如果安卓的颜色值大于2^31-1，那么它是一个负数，需要减去2^32
+  if isAndroid and jjj > 2^31 - 1 then
+    jjj = tointeger(jjj - 2^32)
+  end
+  return jjj
+end
+
 function 主题(str)
   全局主题值=str
   if 全局主题值=="Day" then
     primaryc=dec2hex(res.color.attr.colorPrimary)
+    primaryc_int=转0x(primaryc)
     secondaryc="#fdd835"
     textc=dec2hex(res.color.attr.colorOnSurface)
+    textc_int=转0x(textc)
     stextc="#424242"
+    stextc_int=转0x(stextc)
     --backgroundc="#ffffffff"
     backgroundc=dec2hex(res.color.attr.colorSurface)
+    backgroundc_int=转0x(backgroundc)
     barbackgroundc=res.color.attr.colorSurfaceContainerHigh
     cardbackc=dec2hex(res.color.attr.colorSurfaceContainerLow)
     barc=dec2hex(res.color.attr.colorSurfaceContainerLow)
@@ -811,7 +838,13 @@ function 主题(str)
     grayc="#ECEDF1"
     ripplec="#559E9E9E"
     cardedge=dec2hex(res.color.attr.colorSurfaceContainerLow)
+    cardedge_int=转0x(cardedge)
     oricardedge=dec2hex(res.color.attr.colorOutlineVariant)
+    oricardedge_int=转0x(oricardedge)
+    
+    -- 预创建波纹颜色状态列表
+    local ripple_color = primaryc_int - 0xdf000000
+    theme_ripple_res = ColorStateList(IntArray{int{}}, int{ripple_color})
 
     if 获取主题夜间模式() == true then
       if Boolean.valueOf(this.getSharedData("Setting_Auto_Night_Mode"))==true then
@@ -826,21 +859,32 @@ function 主题(str)
     end
    elseif 全局主题值=="Night" then
     primaryc=dec2hex(res.color.attr.colorPrimary)
+    primaryc_int=转0x(primaryc)
     secondaryc="#ffbfa328"
     textc=dec2hex(res.color.attr.colorOnSurface)
+    textc_int=转0x(textc)
     stextc="#808080"
+    stextc_int=转0x(stextc)
     --backgroundc="#ff191919"
     backgroundc=dec2hex(res.color.attr.colorSurface)
     if Boolean.valueOf(this.getSharedData("OLED") or false)
       backgroundc="#ff000000"
     end
+    backgroundc_int=转0x(backgroundc)
     barbackgroundc=res.color.attr.colorSurfaceContainerHigh
     cardbackc="#ff212121"
     viewshaderc="#80000000"
     grayc="#212121"
     ripplec="#559E9E9E"
     cardedge=dec2hex(res.color.attr.colorSurfaceContainer)
+    cardedge_int=转0x(cardedge)
     oricardedge=dec2hex(res.color.attr.colorOutlineVariant)
+    oricardedge_int=转0x(oricardedge)
+    
+    -- 预创建波纹颜色状态列表
+    local ripple_color = primaryc_int - 0xdf000000
+    theme_ripple_res = ColorStateList(IntArray{int{}}, int{ripple_color})
+    
     barc=dec2hex(res.color.attr.colorSurfaceContainerLow)
     pcall(function()
       local _window = activity.getWindow();
@@ -880,21 +924,6 @@ end
 
 activity.getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS).setStatusBarColor(0);
 
-
-function 转0x(j,isAndroid)
-  if #j==7 then
-    jj=j:match("#(.+)")
-    jjj=tonumber("0xff"..jj)
-   else
-    jj=j:match("#(.+)")
-    jjj=tonumber("0x"..jj)
-  end
-  -- 如果安卓的颜色值大于2^31-1，那么它是一个负数，需要减去2^32
-  if isAndroid and jjj > 2^31 - 1 then
-    jjj = tointeger(jjj - 2^32)
-  end
-  return jjj
-end
 
 function 提示(t)
 
@@ -1016,15 +1045,12 @@ function 波纹(id,lx)
   xpcall(function()
     for index,content in pairs(id) do
       if lx=="圆主题" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripple).setColor(ColorStateList(int[0].class{int{}},int{转0x(primaryc)-0xdf000000})))
-      end
-      if lx=="方主题" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripples).setColor(ColorStateList(int[0].class{int{}},int{转0x(primaryc)-0xdf000000})))
-      end
-      if lx=="圆自适应" then
+        content.setBackgroundDrawable(activity.Resources.getDrawable(ripple).setColor(theme_ripple_res))
+      elseif lx=="方主题" then
+        content.setBackgroundDrawable(activity.Resources.getDrawable(ripples).setColor(theme_ripple_res))
+      elseif lx=="圆自适应" then
         content.setBackgroundDrawable(activity.Resources.getDrawable(ripple).setColor(colorStateList))
-      end
-      if lx=="方自适应" then
+      elseif lx=="方自适应" then
         content.setBackgroundDrawable(activity.Resources.getDrawable(ripples).setColor(colorStateList))
       end
     end
@@ -1051,13 +1077,20 @@ function 关闭对话框(an)
   an.dismiss()
 end
 
-local function createBaseDialogLayout(bt, nr, buttons)
-  local gd2 = GradientDrawable()
-  gd2.setColor(转0x(backgroundc))
-  local radius = dp2px(16)
-  gd2.setCornerRadii({radius, radius, radius, radius, 0, 0, 0, 0})
-  gd2.setShape(0)
+function 内置存储文件(u)
+  if u =="" or u==nil then
+    return 内置存储("Hydrogen/")
+   else
+    return 内置存储("Hydrogen/"..u)
+  end
+end
 
+local function _buildDialogBase(bt, nr, buttons)
+  local gd = GradientDrawable()
+  gd.setColor(backgroundc_int)
+  local radius = dp2px(16)
+  gd.setCornerRadii({radius, radius, radius, radius, 0, 0, 0, 0})
+  
   local layout = {
     LinearLayout,
     layout_width = -1,
@@ -1068,12 +1101,11 @@ local function createBaseDialogLayout(bt, nr, buttons)
       layout_width = -1,
       layout_height = -2,
       Elevation = "4dp",
-      BackgroundDrawable = gd2,
-      id = "ztbj",
+      BackgroundDrawable = gd,
       {
         CardView,
         layout_gravity = "center",
-        CardBackgroundColor = 转0x(cardedge),
+        CardBackgroundColor = oricardedge_int or 转0x(oricardedge),
         radius = "3dp",
         Elevation = "0dp",
         layout_height = "6dp",
@@ -1090,7 +1122,7 @@ local function createBaseDialogLayout(bt, nr, buttons)
         layout_marginRight = "24dp",
         Text = bt,
         Typeface = 字体("product-Bold"),
-        textColor = 转0x(primaryc),
+        textColor = primaryc_int,
       },
       {
         ScrollView,
@@ -1106,8 +1138,7 @@ local function createBaseDialogLayout(bt, nr, buttons)
           layout_marginBottom = "8dp",
           Typeface = 字体("product"),
           Text = nr,
-          textColor = 转0x(textc),
-          id = "sandhk_wb",
+          textColor = textc_int,
           textSize = 内容文字大小,
           lineHeight = 内容行高,
         },
@@ -1123,61 +1154,47 @@ local function createBaseDialogLayout(bt, nr, buttons)
     },
   }
 
-  local tmpview = {}
-  local view = loadlayout2(layout, tmpview)
-  local container = tmpview.button_container
+  local views = {}
+  local view = loadlayout2(layout, views)
+  local container = views.button_container
 
   for _, btn in ipairs(buttons) do
-    local btn_layout = {
+    local btn_view = loadlayout2({
       btn.type or MaterialButton,
-      layout_marginTop = "16dp",
-      layout_marginLeft = "16dp",
-      layout_marginRight = "16dp",
-      layout_marginBottom = "16dp",
-      textColor = btn.textColor or 转0x(backgroundc),
+      layout_margin = "8dp",
+      textColor = btn.textColor or backgroundc_int,
       text = btn.text,
-      id = btn.id,
       Typeface = 字体("product-Bold"),
-    }
-    if btn.weight then
-      btn_layout.layout_weight = btn.weight
-      btn_layout.layout_width = -1
-    end
-    container.addView(loadlayout2(btn_layout, tmpview, LinearLayout))
+      layout_weight = btn.weight,
+      layout_width = btn.weight and -1 or -2,
+    }, {}, LinearLayout)
+    btn_view.onClick = btn.onClick
+    container.addView(btn_view)
   end
 
-  return view, tmpview
+  local dialog = BottomSheetDialog(this)
+  dialog.setContentView(view)
+  return dialog
 end
 
 function 三按钮对话框(bt, nr, qd, qx, ds, qdnr, qxnr, dsnr, iscancelable)
-  local buttons = {
-    {text = ds, id = "dsnr_c", textColor = 转0x(stextc), type = MaterialButton_OutlinedButton},
-    {text = "", id = "spacer", weight = 1, type = LinearLayout}, -- Spacer
-    {text = qx, id = "qxnr_c", textColor = 转0x(stextc), type = MaterialButton_OutlinedButton},
-    {text = qd, id = "qdnr_c", textColor = 转0x(backgroundc), type = MaterialButton}
-  }
-  local layout, tmpview = createBaseDialogLayout(bt, nr, buttons)
-  local bottomSheetDialog = BottomSheetDialog(this)
-  bottomSheetDialog.setContentView(layout)
-  local an = bottomSheetDialog.show()
-  an.setCancelable(iscancelable ~= false)
-  tmpview.dsnr_c.onClick = function() dsnr(an) end
-  tmpview.qxnr_c.onClick = function() qxnr(an) end
-  tmpview.qdnr_c.onClick = function() qdnr(an) end
+  local dialog = _buildDialogBase(bt, nr, {
+    {text = ds, textColor = stextc_int, type = MaterialButton_OutlinedButton, onClick = function() dsnr(dialog) end},
+    {weight = 1, type = View}, -- Spacer
+    {text = qx, textColor = stextc_int, type = MaterialButton_OutlinedButton, onClick = function() qxnr(dialog) end},
+    {text = qd, onClick = function() qdnr(dialog) end}
+  })
+  dialog.setCancelable(iscancelable ~= false)
+  dialog.show()
 end
 
 function 双按钮对话框(bt, nr, qd, qx, qdnr, qxnr, iscancelable)
-  local buttons = {
-    {text = qx, id = "qxnr_c", textColor = 转0x(stextc), type = MaterialButton_OutlinedButton},
-    {text = qd, id = "qdnr_c", textColor = 转0x(backgroundc), type = MaterialButton}
-  }
-  local layout, tmpview = createBaseDialogLayout(bt, nr, buttons)
-  local bottomSheetDialog = BottomSheetDialog(this)
-  bottomSheetDialog.setContentView(layout)
-  local an = bottomSheetDialog.show()
-  an.setCancelable(iscancelable ~= false)
-  tmpview.qxnr_c.onClick = function() qxnr(an) end
-  tmpview.qdnr_c.onClick = function() qdnr(an) end
+  local dialog = _buildDialogBase(bt, nr, {
+    {text = qx, textColor = stextc_int, type = MaterialButton_OutlinedButton, onClick = function() qxnr(dialog) end},
+    {text = qd, onClick = function() qdnr(dialog) end}
+  })
+  dialog.setCancelable(iscancelable ~= false)
+  dialog.show()
 end
 
 
@@ -2869,6 +2886,9 @@ function getRandom(n)
   return s
 end
 
+import "com.bumptech.glide.load.engine.DiskCacheStrategy"
+import "com.bumptech.glide.request.RequestListener"
+
 local glid_manage=Glide.with(this)
 local glid_manager=Glide.get(this)
 glide_img={}
@@ -2876,8 +2896,6 @@ function loadglide(view,url,ischeck,size)
   if 无图模式 and ischeck~=false then
     url=logopng
   end
-  import "com.bumptech.glide.load.engine.DiskCacheStrategy"
-  import "com.bumptech.glide.request.RequestListener"
   if size then
     glid_manage
     .asBitmap()
@@ -2900,7 +2918,6 @@ function loadglide(view,url,ischeck,size)
     })
     .into(view)
   end
-  glid_manager.clearMemory();
 end
 
 local mybase64=require("base64")

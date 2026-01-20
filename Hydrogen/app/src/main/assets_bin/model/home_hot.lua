@@ -74,6 +74,14 @@ function base:getData(isclear,isinit)
 end
 
 function base:getAdapter(home_pagetool,pos)
+  local cardClick = function(v)
+    local views = v.getTag()
+    local position = views.card.getTag(R.id.tag_first)
+    local data = self.myhotdata[position+1]
+    nTView=views.card
+    检查链接(data.id内容)
+  end
+
   return LuaCustRecyclerAdapter(AdapterCreator({
 
     getItemCount=function()
@@ -91,7 +99,7 @@ function base:getAdapter(home_pagetool,pos)
 
     onCreateViewHolder=function(parent,viewType)
       local views={}
-      holder=LuaCustRecyclerHolder(loadlayout(获取适配器项目布局("home/home_hot"),views))
+      local holder=LuaCustRecyclerHolder(loadlayout(获取适配器项目布局("home/home_hot"),views))
       if viewType==1 or activity.getSharedData("热榜关闭图片")=="true" then
         views.热图片布局.getParent().removeView(views.热图片布局)
         views.热图片布局=nil
@@ -101,6 +109,8 @@ function base:getAdapter(home_pagetool,pos)
         views.热度=nil
       end
       holder.view.setTag(views)
+      views.card.setTag(views)
+      views.card.onClick=cardClick
       return holder
     end,
 
@@ -113,10 +123,7 @@ function base:getAdapter(home_pagetool,pos)
       end
       view.排行.text=tostring(data.排行)
 
-      view.card.onClick=function()
-        nTView=view.card
-        检查链接(data.id内容)
-      end
+      view.card.setTag(R.id.tag_first, position)
 
       if view.热图片 then
         loadglide(view.热图片,data.热图片.src)
