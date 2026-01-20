@@ -8,7 +8,7 @@
 local base={--表初始化
   getid=nil,
   pageinfo={},
-
+  used_ids={}, -- 记录已分发的 ID 防止循环
 }
 
 
@@ -16,6 +16,7 @@ function base:new(id)--类的new方法
   local child=table.clone(self)
   -- 移除 tonumber，知乎 ID 必须作为字符串处理以防精度丢失
   child.getid=tostring(id) --这里的id是回答页id
+  child.used_ids = {} -- 初始为空，由加载逻辑标记
   return child
 end
 
@@ -71,20 +72,22 @@ function base:updateLR()
   end
 end
 
-function base:getNextId(z)
-  local getid=tostring(self.getid)
-  local pageinfo=self.pageinfo
+function base:getNextId(z, from_id)
+  local base_id = tostring(from_id or self.getid)
+  local pageinfo = self.pageinfo
 
-  if pageinfo[getid] then
-    if z then
-      local prev_ids=pageinfo[getid].prev_ids
-      getid=tostring(prev_ids[#prev_ids])
-     else
-      local next_ids=pageinfo[getid].next_ids
-      getid=tostring(next_ids[1])
+  if pageinfo[base_id] then
+    local ids = z and pageinfo[base_id].prev_ids or pageinfo[base_id].next_ids
+    if ids and #ids > 0 then
+      for _, id in ipairs(ids) do
+        local sid = tostring(id)
+        if not self.used_ids[sid] then
+          return sid
+        end
+      end
     end
   end
-  return getid
+  return nil
 end
 
 function base:getOneData(cb,z) --获取一条数据
