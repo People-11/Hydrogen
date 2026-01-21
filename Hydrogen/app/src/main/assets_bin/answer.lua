@@ -242,6 +242,11 @@ appbar.getViewTreeObserver().addOnGlobalLayoutListener(ViewTreeObserver.OnGlobal
 })
 
 function 数据添加(t,回答id,viewId)
+  -- 暴露视频处理接口，供数据加载完成后调用
+  t.processVideo = function()
+    if t.data then 处理视频逻辑(t, t.data) end
+  end
+
   t.content.onScrollChange = 统一滑动跟随
 
   local MyWebViewUtils=require("views/WebViewUtils")(t.content)
@@ -313,7 +318,7 @@ function 数据添加(t,回答id,viewId)
 
       -- 扁平化数据逻辑处理
       view.postDelayed(function()
-        if t.data then 处理视频逻辑(t, t.data) end
+        t.processVideo()
       end, 100)
     end,
   }
@@ -452,6 +457,9 @@ function 加载页(mviews, isleftadd, pos, target_id, silent)
     end
 
     初始化页(mviews)
+    
+    -- 数据就绪后，尝试处理视频逻辑 (修复竞态条件)
+    if mviews.ids.processVideo then mviews.ids.processVideo() end
     
     -- 尝试链式预加载物理下一页
     local next_pos = pos + (isleftadd and -1 or 1)
