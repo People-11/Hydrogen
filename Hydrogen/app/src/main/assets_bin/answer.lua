@@ -241,7 +241,7 @@ appbar.getViewTreeObserver().addOnGlobalLayoutListener(ViewTreeObserver.OnGlobal
   end
 })
 
-function 数据添加(t,回答id)
+function 数据添加(t,回答id,viewId)
   t.content.onScrollChange = 统一滑动跟随
 
   local MyWebViewUtils=require("views/WebViewUtils")(t.content)
@@ -293,7 +293,14 @@ function 数据添加(t,回答id)
               local 保存滑动位置 = tonumber(pos_val) or 0
               if 保存滑动位置 > userinfo.height then
                 setDtlTranslation(getDtlMaxTranslation())
-                提示("已恢复到上次滑动位置")
+                
+                local currentPos = pg.getCurrentItem()
+                local adapter = pg.getAdapter()
+                local currentItem = adapter and adapter.getItem(currentPos)
+                -- 仅当当前显示的是该页面时提示
+                if currentItem and currentItem.id == viewId then
+                   提示("已恢复到上次滑动位置")
+                end
               end
             end})
           end})
@@ -401,14 +408,14 @@ end
 -- 预先添加三个页面，支持预加载
 for i=1,3 do addAnswer() end
 
-function 加载页(mviews, isleftadd, pos, target_id)
+function 加载页(mviews, isleftadd, pos, target_id, silent)
   if not target_id or mviews.load then return end
   mviews.load = "loading"
   mviews.target_id = target_id
   
   -- 标记占用并立即加载网页
   回答容器.used_ids[tostring(target_id)] = true
-  数据添加(mviews.ids, tostring(target_id))
+  数据添加(mviews.ids, tostring(target_id), mviews.id)
   
   -- 异步获取详细信息
   回答容器:getAnswer(target_id, function(cb)
@@ -454,10 +461,10 @@ function 加载页(mviews, isleftadd, pos, target_id)
       local next_mviews = 数据表[next_item.id]
       if next_mviews and not next_mviews.load then
         local next_id = 回答容器:getNextId(isleftadd, target_id)
-        if next_id then 加载页(next_mviews, isleftadd, next_pos, next_id) end
+        if next_id then 加载页(next_mviews, isleftadd, next_pos, next_id, true) end
       end
     end
-  end)
+  end, silent)
 end
 
 -- 辅助函数：确保指定位置的页面正在加载
@@ -469,7 +476,7 @@ local function ensureLoading(p, from_id)
   local mv = 数据表[item.id]
   if mv and not mv.load then
     local nid = 回答容器:getNextId(false, from_id)
-    if nid then 加载页(mv, false, p, nid) end
+    if nid then 加载页(mv, false, p, nid, true) end
   end
 end
 
