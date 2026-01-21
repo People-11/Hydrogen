@@ -502,20 +502,11 @@ pg.registerOnPageChangeCallback(OnPageChangeCallback{
       加载页(mviews, false, pos, 回答容器.getid)
     end
 
-    -- 2. 预测加载
-    local base_id = (mviews.load == true) and mviews.data.id or mviews.target_id
-    ensureLoading(pos + 1, base_id)
-    if adapter.getItemCount() == pos + 1 and 回答容器 and not 回答容器.isright then
-      addAnswer()
-    end
-    
-    -- 只有当前页数据就绪，探测 pos+2 才有精准 ID 链
-    if mviews.load == true then
-      local next_item = adapter.getItem(pos + 1)
-      local next_mv = 数据表[next_item.id]
-      local next_base_id = (next_mv and next_mv.load == true) and next_mv.data.id or (next_mv and next_mv.target_id)
-      ensureLoading(pos + 2, next_base_id or base_id)
-    end
+    -- 2. 预测加载 (延时执行，避免阻塞 UI 或引发刷新闪烁)
+    pg.post(function()
+      local base_id = (mviews.load == true) and mviews.data.id or mviews.target_id
+      ensureLoading(pos + 1, base_id)
+    end)
 
     -- 同步 AppBar 状态
     local scroll_y = currentWebView.getScrollY()
