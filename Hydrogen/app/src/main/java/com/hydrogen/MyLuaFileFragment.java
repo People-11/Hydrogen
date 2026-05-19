@@ -19,6 +19,7 @@ import com.luajava.*;
 
 import java.io.File;
 import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -36,6 +37,7 @@ public class MyLuaFileFragment extends Fragment implements LuaGcable {
     private final Object[] mArgs;
     private ViewModel mVM;
     private HashMap<String, Object> mGlobal;
+    private ArrayList<String> mGlobalKeys;
 
     public MyLuaFileFragment(String luaFilePath) {
         this(luaFilePath, new Object[0], new HashMap<String, Object>());
@@ -67,7 +69,14 @@ public class MyLuaFileFragment extends Fragment implements LuaGcable {
             LuaState activtyL = mLuaActivity.getLuaState();
             System.out.println("MyLuaFileFragment activityL" + activtyL);
             System.out.println("MyLuaFileFragment FragmentL" + L);
+            try {
+                LuaStatePool.getInstance(mLuaActivity).release(L,
+                        mGlobalKeys != null ? mGlobalKeys.toArray(new String[0]) : null);
+            } catch (Exception e) {
+                // pool release failed, discard LuaState
+            }
             L = null;
+            mGlobalKeys = null;
             try {
                 activtyL.getLuaObject("luajava").getField("clear").getFunction().call(this);
                 Field field = LuaState.class.getDeclaredField("javaObjectMap");
@@ -213,15 +222,13 @@ public class MyLuaFileFragment extends Fragment implements LuaGcable {
 
         luaLpath = (luaDir + "/?.lua;" + luaDir + "/lua/?.lua;" + luaDir + "/?/init.lua;") + luaLpath;
 
-        L = LuaStateFactory.newLuaState();
-        L.openLibs();
+        L = LuaStatePool.getInstance(mLuaActivity).acquire(mLuaActivity);
         L.pushJavaObject(this);
         L.setGlobal("thisFragment");
         L.pushJavaObject(mLuaActivity);
         L.setGlobal("activity");
         L.getGlobal("activity");
         L.setGlobal("this");
-        L.pushContext(mLuaActivity);
         L.getGlobal("luajava");
         L.pushString(luaExtDir);
         L.setField(-2, "luaextdir");
@@ -231,9 +238,6 @@ public class MyLuaFileFragment extends Fragment implements LuaGcable {
         L.setField(-2, "luapath");
         L.pop(1);
 
-        JavaFunction print = new LuaPrint(mLuaActivity, L);
-        print.register("print");
-
         L.getGlobal("package");
         L.pushString(luaLpath);
         L.setField(-2, "path");
@@ -241,15 +245,14 @@ public class MyLuaFileFragment extends Fragment implements LuaGcable {
         L.setField(-2, "cpath");
         L.pop(1);
 
+        mGlobalKeys = new ArrayList<>();
         for (Map.Entry<String, Object> entry : mGlobal.entrySet()) {
             String key = entry.getKey(); // 获取键
             Object value = entry.getValue(); // 获取值
             L.pushObjectValue(value);
             L.setGlobal(key);
+            mGlobalKeys.add(key);
         }
-
-        new LuaSetFunction(L).register("set");
-        new LuaCallFunction(L).register("call");
 
     }
 

@@ -161,6 +161,7 @@ function newActivity(f,b,c)
   local ff=f1
   local nt=tonumber(os.time())
   local t = activity.getSupportFragmentManager().beginTransaction()
+  t.setReorderingAllowed(true)
   --[[t.setCustomAnimations(
   android.R.anim.slide_in_left,
   android.R.anim.slide_out_right,
