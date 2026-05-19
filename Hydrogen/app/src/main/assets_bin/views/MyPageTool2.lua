@@ -18,8 +18,27 @@ local Page_Tool={
   addpos=0,
 }--父类
 
+-- Cache the blocked words list to avoid repeated SharedPreferences I/O
+local _blockedWordsCache = nil
+local function getBlockedWords()
+  if _blockedWordsCache == nil then
+    local raw = this.getSharedData("屏蔽词")
+    if raw and raw:gsub(" ","") ~= "" then
+      _blockedWordsCache = {}
+      for word in string.gmatch(raw, "%S+") do
+        _blockedWordsCache[#_blockedWordsCache + 1] = word
+      end
+    else
+      _blockedWordsCache = false
+    end
+  end
+  return _blockedWordsCache
+end
+
 local function contains_any(test_string)
-  for word in string.gmatch(this.getSharedData("屏蔽词"), "%S+") do
+  local words = getBlockedWords()
+  if not words then return false end
+  for _, word in ipairs(words) do
     if string.find(test_string, word, 1, true) then
       return true
     end
@@ -28,7 +47,7 @@ local function contains_any(test_string)
 end
 
 local function 加载屏蔽词(tab)
-  if this.getSharedData("屏蔽词") and this.getSharedData("屏蔽词"):gsub(" ","")~="" then
+  if getBlockedWords() then
     local mt = {
       __newindex = function(t, k, v)
         local 匹配内容=tostring(v.标题)..tostring(v.预览内容)

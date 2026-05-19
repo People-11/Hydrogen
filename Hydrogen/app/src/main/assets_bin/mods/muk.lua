@@ -51,30 +51,28 @@ layout_dir="layout/item_layout/"
 无图模式=Boolean.valueOf(activity.getSharedData("不加载图片"))
 
 
-import "android.animation.ObjectAnimator"
-import "android.view.animation.*"
+local AppBarLayout = luajava.bindClass("com.google.android.material.appbar.AppBarLayout")
+local AppBarLayout_OnOffsetChangedListener = luajava.bindClass("com.google.android.material.appbar.AppBarLayout$OnOffsetChangedListener")
 
 function addAutoHideListener(recs,views)
   local appbar
-  -- 先尝试从 views 的父容器中找 AppBarLayout
   local parent = views[1].getParent()
   if parent then
     for i=0, parent.getChildCount()-1 do
       local child = parent.getChildAt(i)
-      if luajava.instanceof(child, luajava.bindClass("com.google.android.material.appbar.AppBarLayout")) then
+      if luajava.instanceof(child, AppBarLayout) then
         appbar = child
         break
       end
     end
   end
 
-  -- 如果没找到，尝试往更上一层找（CoordinatorLayout 结构）
   if not appbar and parent then
     local grandParent = parent.getParent()
     if grandParent then
       for i=0, grandParent.getChildCount()-1 do
         local child = grandParent.getChildAt(i)
-        if luajava.instanceof(child, luajava.bindClass("com.google.android.material.appbar.AppBarLayout")) then
+        if luajava.instanceof(child, AppBarLayout) then
           appbar = child
           break
         end
@@ -83,13 +81,11 @@ function addAutoHideListener(recs,views)
   end
 
   if appbar then
-    appbar.addOnOffsetChangedListener(luajava.bindClass("com.google.android.material.appbar.AppBarLayout$OnOffsetChangedListener")({
+    appbar.addOnOffsetChangedListener(AppBarLayout_OnOffsetChangedListener({
       onOffsetChanged=function(v,verticalOffset)
         local totalScrollRange = v.getTotalScrollRange()
-        -- 计算移动比例 0 为完全显示，1 为完全隐藏
         local factor = -verticalOffset / totalScrollRange
-        for i,ee in pairs(views)
-          -- 实时设置位移，不使用动画，达到像素级跟随
+        for _,ee in pairs(views)
           ee.setTranslationY(ee.getHeight() * factor)
         end
       end
@@ -97,6 +93,7 @@ function addAutoHideListener(recs,views)
   end
 end
 
+local TAG_LAST_TIME = R.id.tag_last_time
 function MyLuaFileFragment(a,b,c)
   return luajava_override(luajava_bindClass("com.hydrogen.MyLuaFileFragment"),{
     onDestroy=function(super)super()
@@ -104,20 +101,23 @@ function MyLuaFileFragment(a,b,c)
       this.getLuaState().pushNil()
       this.getLuaState().setGlobal("currentFragment")
 
-      local ff = f2
-      if tonumber(f1.getTag(R.id.tag_last_time))>tonumber(f2.getTag(R.id.tag_last_time))
-        ff=f2
-       else
-        ff=f1
-      end
+      local f1t = tonumber(f1.getTag(TAG_LAST_TIME))
+      local f2t = tonumber(f2.getTag(TAG_LAST_TIME))
+      local ff = f1t > f2t and f2 or f1
       ff.tag="empty"
-      ff.setTag(R.id.tag_last_time,114514)
+      ff.setTag(TAG_LAST_TIME,114514)
     end
   },a,b,c)
 end
 
+local _predictiveBackChecked = false
+local _predictiveBackEnabled = true
 function 设置视图(t)
-  if tostring(this.getSharedData("预见性返回手势"))=="false"
+  if not _predictiveBackChecked then
+    _predictiveBackEnabled = tostring(this.getSharedData("预见性返回手势")) ~= "false"
+    _predictiveBackChecked = true
+  end
+  if not _predictiveBackEnabled then
     this.getSupportFragmentManager().enablePredictiveBack(false)
   end
 
@@ -144,8 +144,6 @@ function 设置视图(t)
      else
       local backward = MaterialSharedAxis(MaterialSharedAxis.Z, false)
       .addTarget(thisFragment.container)
-      .addTarget(thisFragment.container)
-      --.addTarget(ff)
       thisFragment.setSharedElementReturnTransition(backward).setReenterTransition(backward).setExitTransition(backward).setReturnTransition(backward)
       thisFragment.startPostponedEnterTransition()
     end
@@ -160,17 +158,12 @@ function newActivity(f,b,c)
   b=b or {}
   local ff=f1
   local nt=tonumber(os.time())
-  local t = activity.getSupportFragmentManager().beginTransaction()
+  local fm = activity.getSupportFragmentManager()
+  local t = fm.beginTransaction()
   t.setReorderingAllowed(true)
-  --[[t.setCustomAnimations(
-  android.R.anim.slide_in_left,
-  android.R.anim.slide_out_right,
-  android.R.anim.slide_in_left,
-  android.R.anim.slide_out_right)]]
-  --t.remove(activity.getSupportFragmentManager().findFragmentByTag("answer"))
-  --t.add(thisF.getId(),MyLuaFileFragment(srcLuaDir..f..".lua",b,{fn=fn,fg=fg,inSekai=inSekai,onBackCancelled=onBackCancelled,onBackStarted=onBackStarted,onBackInvoked=onBackInvoked,onBackProgressed=onBackProgressed}))
-  --t.setTransition(FragmentTransaction.TRANSIT_FRAGMENT_OPEN)
-  if tonumber(f1.getTag(R.id.tag_last_time))>tonumber(f2.getTag(R.id.tag_last_time))
+  local f1t = tonumber(f1.getTag(TAG_LAST_TIME))
+  local f2t = tonumber(f2.getTag(TAG_LAST_TIME))
+  if f1t > f2t
     ff=f2
    else
     ff=f1
@@ -180,7 +173,7 @@ function newActivity(f,b,c)
   end
   if !inSekai then ff = f1 end
   ff.tag=f
-  ff.setTag(R.id.tag_last_time,nt)
+  ff.setTag(TAG_LAST_TIME,nt)
   if nTView then
     --https://developer.android.google.cn/reference/android/view/RoundedCorner#POSITION_BOTTOM_LEFT
 
@@ -346,13 +339,10 @@ end
 
 
 
+local Base64 = luajava_bindClass "android.util.Base64"
 function base64ToBitmap(encodedImage)
   local prefix = "data:image/png;base64,"
   local imageData = string.sub(encodedImage, #prefix + 1)
-
-  local Base64 = luajava_bindClass "android.util.Base64"
-  local BitmapFactory = luajava_bindClass "android.graphics.BitmapFactory"
-
   local decodedImage = Base64.decode(imageData, Base64.DEFAULT)
   return BitmapFactory.decodeByteArray(decodedImage, 0, #decodedImage)
 end
@@ -393,36 +383,35 @@ end
 srcLuaDir = findDirectoryUpward(this.getLuaDir()) or this.getLuaDir()
 logopng=srcLuaDir.."/logo.png"
 
-function 设置toolbar属性(toolbar,title)
+local PorterDuffColorFilter=luajava_bindClass "android.graphics.PorterDuffColorFilter"
+local PorterDuff=luajava_bindClass "android.graphics.PorterDuff"
+local AppCompatTextView=luajava_bindClass "androidx.appcompat.widget.AppCompatTextView"
+local _cachedNavIcon
 
-  local PorterDuffColorFilter=luajava_bindClass "android.graphics.PorterDuffColorFilter"
-  local PorterDuff=luajava_bindClass "android.graphics.PorterDuff"
-  local bitmap=loadbitmap(图标("arrow_back"))
-  local imgdp = 26
-  local imgpx=TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, imgdp, activity.Resources.DisplayMetrics)
-  local colorFilter = PorterDuffColorFilter(res.color.attr.colorPrimary, PorterDuff.Mode.SRC_ATOP)
-  local scaledBitmap = Bitmap.createScaledBitmap(bitmap, imgpx, imgpx, true)
-  local bitmap=BitmapDrawable(activity.Resources,scaledBitmap)
-  .setColorFilter(colorFilter)
-  toolbar.setNavigationIcon(bitmap)
+function 设置toolbar属性(toolbar,title)
+  if not _cachedNavIcon then
+    local raw_bmp = loadbitmap(图标("arrow_back"))
+    local imgpx = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 26, activity.Resources.DisplayMetrics)
+    local cf = PorterDuffColorFilter(res.color.attr.colorPrimary, PorterDuff.Mode.SRC_ATOP)
+    local scaled = Bitmap.createScaledBitmap(raw_bmp, imgpx, imgpx, true)
+    _cachedNavIcon = BitmapDrawable(activity.Resources, scaled)
+    _cachedNavIcon.setColorFilter(cf)
+  end
+  toolbar.setNavigationIcon(_cachedNavIcon)
   toolbar.setNavigationContentDescription("转到上一层级")
   toolbar.setNavigationOnClickListener({onClick=function()
       关闭页面()
   end})
   toolbar.title=title
 
-  import "androidx.appcompat.widget.Toolbar"
-  local AppCompatTextView=luajava_bindClass "androidx.appcompat.widget.AppCompatTextView"
   for i=0,toolbar.getChildCount()-1 do
     local view = toolbar.getChildAt(i);
     if luajava.instanceof(view,AppCompatTextView) then
-      local textView = view;
-      textView.setTextSize(18)
-      textView.Typeface=字体("product-Bold")
-      textView.textColor=转0x(primaryc)
+      view.setTextSize(18)
+      view.Typeface=字体("product-Bold")
+      view.textColor=转0x(primaryc)
     end
   end
-
 end
 
 --更新字号相关逻辑已移动到import.lua
@@ -456,45 +445,46 @@ function 点击事件判断(myid,title,extra)
     end
   end
 
-  if tostring(myid):find("问题分割") or not(tostring(myid):find("分割")) then
-    local qid = tostring(myid):match("问题分割(.+)") or myid
+  local myid_str = tostring(myid)
+  if myid_str:find("问题分割") or not(myid_str:find("分割")) then
+    local qid = myid_str:match("问题分割(.+)") or myid
     local qdata = target_data
     if target_data and target_data.question then
       qdata = target_data.question
     end
     newActivity("question",{qid, qdata or title})
-   elseif tostring(myid):find("文章分割") then
-    newActivity("column",{tostring(myid):match("文章分割(.+)"), target_data or tostring(myid):match("分割(.+)")})
-   elseif tostring(myid):find("视频分割") then
-    newActivity("column",{tostring(myid):match("视频分割(.+)"), target_data or "视频"})
-   elseif tostring(myid):find("想法分割") then
-    newActivity("column",{tostring(myid):match("想法分割(.+)"), target_data or "想法"})
-   elseif tostring(myid):find("直播分割") then
-    newActivity("column",{tostring(myid):match("直播分割(.+)"), target_data or "直播"})
-   elseif tostring(myid):find("圆桌分割") then
-    newActivity("column",{tostring(myid):match("圆桌分割(.+)"), target_data or "圆桌"})
-   elseif tostring(myid):find("专题分割") then
-    newActivity("column",{tostring(myid):match("专题分割(.+)"), target_data or "专题"})
-   elseif tostring(myid):find("视频合集详情分割") then
-    newActivity("people_more",{tostring(myid):match("视频合集详情分割(.+)"),"视频合集详情"})
-   elseif tostring(myid):find("话题分割") then
-    newActivity("topic",{tostring(myid):match("话题分割(.+)"), target_data})
-   elseif tostring(myid):find("用户分割") then
-    local uid = tostring(myid):match("用户分割(.+)")
+   elseif myid_str:find("文章分割") then
+    newActivity("column",{myid_str:match("文章分割(.+)"), target_data or myid_str:match("分割(.+)")})
+   elseif myid_str:find("视频分割") then
+    newActivity("column",{myid_str:match("视频分割(.+)"), target_data or "视频"})
+   elseif myid_str:find("想法分割") then
+    newActivity("column",{myid_str:match("想法分割(.+)"), target_data or "想法"})
+   elseif myid_str:find("直播分割") then
+    newActivity("column",{myid_str:match("直播分割(.+)"), target_data or "直播"})
+   elseif myid_str:find("圆桌分割") then
+    newActivity("column",{myid_str:match("圆桌分割(.+)"), target_data or "圆桌"})
+   elseif myid_str:find("专题分割") then
+    newActivity("column",{myid_str:match("专题分割(.+)"), target_data or "专题"})
+   elseif myid_str:find("视频合集详情分割") then
+    newActivity("people_more",{myid_str:match("视频合集详情分割(.+)"),"视频合集详情"})
+   elseif myid_str:find("话题分割") then
+    newActivity("topic",{myid_str:match("话题分割(.+)"), target_data})
+   elseif myid_str:find("用户分割") then
+    local uid = myid_str:match("用户分割(.+)")
     local udata = target_data
     if target_data and target_data.author then
       udata = target_data.author
     end
     newActivity("people",{uid, udata})
-   elseif tostring(myid):find("专栏分割") then
-    newActivity("people_column",{tostring(myid):match("专栏分割(.+)"), target_data})
-   elseif tostring(myid):find("浏览器") then
-    newActivity("browser",{tostring(myid):match("浏览器(.+)")})
-   elseif tostring(myid):find("toast分割") then
-    提示(tostring(myid):match("toast分割(.+)"))
+   elseif myid_str:find("专栏分割") then
+    newActivity("people_column",{myid_str:match("专栏分割(.+)"), target_data})
+   elseif myid_str:find("浏览器") then
+    newActivity("browser",{myid_str:match("浏览器(.+)")})
+   elseif myid_str:find("toast分割") then
+    提示(myid_str:match("toast分割(.+)"))
 
    else
-    newActivity("answer",{tostring(myid):match("(.+)分割"),tostring(myid):match("分割(.+)"),extra})
+    newActivity("answer",{myid_str:match("(.+)分割"),myid_str:match("分割(.+)"),extra})
   end
 end
 
@@ -636,23 +626,24 @@ function processTable(userdataTable)
   return resultTable
 end
 
+local _defaultScale = activity.getResources().getDisplayMetrics().scaledDensity
 function dp2px(dpValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
+  local scale = isreal and real_scale or _defaultScale
   return dpValue * scale + 0.5
 end
 
 function px2dp(pxValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
+  local scale = isreal and real_scale or _defaultScale
   return pxValue / scale + 0.5
 end
 
 function px2sp(pxValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
+  local scale = isreal and real_scale or _defaultScale
   return pxValue / scale + 0.5
 end
 
 function sp2px(spValue,isreal)
-  local scale = isreal and real_scale or activity.getResources().getDisplayMetrics().scaledDensity
+  local scale = isreal and real_scale or _defaultScale
   return spValue * scale + 0.5
 end
 rccolumn=px2dp(activity.getWidth()/2)//300
@@ -1052,26 +1043,29 @@ function 静态渐变(a,b,id,fx)
   id.setBackgroundDrawable(drawable)
 end
 
-ripple = activity.obtainStyledAttributes({android.R.attr.selectableItemBackgroundBorderless}).getResourceId(0,0)
-ripples = activity.obtainStyledAttributes({android.R.attr.selectableItemBackground}).getResourceId(0,0)
-
+-- Pre-built ripple ColorStateLists to avoid per-view allocation in 波纹()
+local _ripple_theme_color = 转0x(primaryc)-0xdf000000
+local _ripple_theme_list = ColorStateList(int[0].class{int{}},int{_ripple_theme_color})
+local _ripple_ripple_id = activity.obtainStyledAttributes({android.R.attr.selectableItemBackgroundBorderless}).getResourceId(0,0)
+local _ripple_ripples_id = activity.obtainStyledAttributes({android.R.attr.selectableItemBackground}).getResourceId(0,0)
 local color=res.color.attr.colorControlHighlight
-colorStateList = ColorStateList.valueOf(color);
+colorStateList = ColorStateList.valueOf(color)
 
 function 波纹(id,lx)
   xpcall(function()
-    for index,content in pairs(id) do
-      if lx=="圆主题" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripple).setColor(ColorStateList(int[0].class{int{}},int{转0x(primaryc)-0xdf000000})))
-      end
-      if lx=="方主题" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripples).setColor(ColorStateList(int[0].class{int{}},int{转0x(primaryc)-0xdf000000})))
-      end
-      if lx=="圆自适应" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripple).setColor(colorStateList))
-      end
-      if lx=="方自适应" then
-        content.setBackgroundDrawable(activity.Resources.getDrawable(ripples).setColor(colorStateList))
+    local res_id, cs_list
+    if lx=="圆主题" then
+      res_id, cs_list = _ripple_ripple_id, _ripple_theme_list
+    elseif lx=="方主题" then
+      res_id, cs_list = _ripple_ripples_id, _ripple_theme_list
+    elseif lx=="圆自适应" then
+      res_id, cs_list = _ripple_ripple_id, colorStateList
+    elseif lx=="方自适应" then
+      res_id, cs_list = _ripple_ripples_id, colorStateList
+    end
+    if res_id then
+      for _, content in pairs(id) do
+        content.setBackgroundDrawable(activity.Resources.getDrawable(res_id).setColor(cs_list))
       end
     end
   end,function(e)end)
@@ -2601,9 +2595,6 @@ function 等待doc(view)
 end
 
 function getFont_b64(filePath)
-  local FileInputStream=luajava_bindClass"java.io.FileInputStream"
-  local Base64=luajava_bindClass "android.util.Base64";
-
   local fis = FileInputStream(filePath)
   local fileContent = byte[fis.available()];
   fis.read(fileContent);
