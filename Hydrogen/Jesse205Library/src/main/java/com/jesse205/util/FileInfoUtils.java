@@ -1,7 +1,6 @@
 package com.jesse205.util;
 
 import android.annotation.SuppressLint;
-import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.content.Context;
 import android.database.Cursor;
@@ -102,10 +101,6 @@ public class FileInfoUtils {
 
 
 
-    public static boolean isGooglePhotosUri(String authority) {
-        return "com.google.android.apps.photos.content".equals(authority);
-    }
-
     public static boolean isHuaWeiUri(String authority) {
         return "com.huawei.hidisk.fileprovider".equals(authority)||"com.huawei.filemanager.share.fileprovider".equals(authority);
     }
@@ -125,37 +120,6 @@ public class FileInfoUtils {
         return "com.android.providers.media.documents".equals(authority);
 
     }
-
-    /**
-     * 获取真实路径
-     *
-     */
-    public static String getRealFilePath(Context context, final Uri uri) {
-        if (null == uri)
-            return null;
-        final String scheme = uri.getScheme();
-        String data = null;
-        if (scheme == null)
-            data = uri.getPath();
-        else if (ContentResolver.SCHEME_FILE.equals(scheme)) {
-            data = uri.getPath();
-        } else if (ContentResolver.SCHEME_CONTENT.equals(scheme)) {
-            Cursor cursor = context.getContentResolver().query(uri, new String[]{MediaStore.Images.ImageColumns.DATA}, null, null, null);
-            if (null != cursor) {
-                if (cursor.moveToFirst()) {
-                    int index = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
-                    if (index > -1) {
-                        data = cursor.getString(index);
-                    }
-                }
-                cursor.close();
-            }
-        }
-        return data;
-    }
-
-
-
 
     }
 

@@ -466,15 +466,7 @@ function bnv.onNavigationItemSelected(item)
 end
 
 page_home.addOnPageChangeListener(ViewPager.OnPageChangeListener {
-
-  onPageScrolled=function(position, positionOffset, positionOffsetPixels)
-  end;
-
   onPageSelected=onHomePageChange;
-
-  onPageScrollStateChanged=function(state)
-
-  end
 });
 
 page_home.setAdapter(pagadp)
@@ -682,21 +674,22 @@ function 成功登录回调()
   setHead()
   
   -- 如果 PageTool 已经初始化，则更新其 URL 模板
+  local people = "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/"
   if collection_pagetool then
     collection_pagetool:setUrls({
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/collections_v2?offset=0&limit=20",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/following_collections?offset=0"
+      people.."collections_v2?offset=0&limit=20",
+      people.."following_collections?offset=0"
     })
   end
   if followcontent_pagetool then
     followcontent_pagetool:setUrls({
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_questions".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_collections".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_topics".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_columns".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."followees".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_news_specials".."?limit=10",
-      "https://api.zhihu.com/people/"..activity.getSharedData("idx").."/".."following_roundtables".."?limit=10",
+      people.."following_questions?limit=10",
+      people.."following_collections?limit=10",
+      people.."following_topics?limit=10",
+      people.."following_columns?limit=10",
+      people.."followees?limit=10",
+      people.."following_news_specials?limit=10",
+      people.."following_roundtables?limit=10",
     })
   end
 
@@ -888,25 +881,15 @@ end)
 
 local MyLuaFileFragment=luajava.bindClass("com.hydrogen.MyLuaFileFragment")
 
-function onKeyDown(code,event)
-  if this.getSharedData("音量键选择tab")~="true" then
-    return false
-  end
-  if luajava.instanceof(currentFragment,MyLuaFileFragment) then
-    local result=currentFragment.runFunc("onKeyUp",{code,event})
-    return result
+local function handleVolumeKey(code, event)
+  if this.getSharedData("音量键选择tab")~="true" then return false end
+  if luajava.instanceof(currentFragment, MyLuaFileFragment) then
+    return currentFragment.runFunc("onKeyUp", {code, event})
   end
 end
 
-function onKeyUp(code,event)
-  if this.getSharedData("音量键选择tab")~="true" then
-    return false
-  end
-  if luajava.instanceof(currentFragment,MyLuaFileFragment) then
-    local result=currentFragment.runFunc("onKeyUp",{code,event})
-    return result
-  end
-end
+function onKeyDown(code,event) return handleVolumeKey(code,event) end
+function onKeyUp(code,event) return handleVolumeKey(code,event) end
 
 import "model.zHttp"
 import "model.zhihu_url"

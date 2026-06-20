@@ -6,7 +6,6 @@
 
 
 local base={--表初始化
-  getid=nil,
   pageinfo={},
   used_ids={}, -- 记录已分发的 ID 防止循环
 }
@@ -28,7 +27,6 @@ function base:getinfo(id,cb)
   ,function(a,b)
     if a==200 then
       cb(luajson.decode(b).question)
-     elseif a==404 then
     end
   end)
 end

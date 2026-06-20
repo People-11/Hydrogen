@@ -84,7 +84,7 @@ function base.getAdapter(people_pagetool,pos)
 
       views.card.onClick=function()
         nTView=views.card
-        if tostring(data.id内容):find("更多") then
+        if data.id内容:find("更多") then
           local id内容=data.id内容:gsub("更多","")
           newActivity("people_more",{用户id,id内容})
          else
@@ -98,7 +98,7 @@ end
 function base.resolvedata(v,data)
   --针对more的支持
   if v.more_tabs then
-    for i,v in ipairs(v.more_tabs) do
+    for _,v in ipairs(v.more_tabs) do
       local 头像=大头像
       local 活动="的更多"
       local 标题=v.title
@@ -294,12 +294,8 @@ function base:processTabs(tabNames, tabInfos)
     table.insert(finalNames, 1, actName)
     table.insert(finalUrls, 1, actUrl)
     -- 如果答案标签存在，简单处理下索引关系（这里只做简单调整，实际需要根据具体需求调整）
-    if answerIndex then
-      if activitiesIndex < answerIndex then
-        answerIndex = answerIndex - 1
-       elseif activitiesIndex > answerIndex then
-        answerIndex = answerIndex + 1
-      end
+    if answerIndex and activitiesIndex > answerIndex then
+      answerIndex = answerIndex + 1
     end
   end
 

@@ -6,7 +6,6 @@ import android.os.Handler;
 import android.os.Looper;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -108,15 +107,6 @@ public class SearchHistoryManager {
      */
     public List<SearchHistoryItem> getRecentFirst() {
         return new ArrayList<>(historyList);
-    }
-
-    /**
-     * 获取按时间正序排列的历史记录（旧->新）
-     */
-    public List<SearchHistoryItem> getOldestFirst() {
-        List<SearchHistoryItem> reversed = new ArrayList<>(historyList);
-        Collections.reverse(reversed);
-        return reversed;
     }
 
     public void clearAll() {

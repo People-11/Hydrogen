@@ -37,6 +37,76 @@ elseif type(pre_data) == "string" then
   end)
 end
 
+question_base=require "model.question":new(question_id)
+question_base:getData(function(tab)
+  if not tab then return end
+
+  title.text = tab.title
+  _comment.Text = tostring(tab.comment_count)
+  _star.Text = tostring(tab.follower_count)
+  _title.Text = "共" .. tostring(tab.answer_count) .. "个回答"
+
+  if #tab.excerpt > 0 then
+    description_text.Text = tab.excerpt
+    openroot.visibility = 0
+  else
+    description_card.visibility = 8
+  end
+
+  _root.Visibility = 0
+
+  初始化历史记录数据()
+  保存历史记录(question_id, tab.title, tab.excerpt, "问题")
+
+  taskUI(100, function()
+    for k, v in pairs(tab.topics) do
+      tags.ids.load.parent.visibility = 0
+      tags:addTab(v.name, function() newActivity("topic", {v.id}) end, 2)
+    end
+
+    问题预览 = tab.detail
+
+    if tab.relationship.is_following then
+      关注数量 = {[1] = tointeger(_star.Text), [2] = tointeger(_star.Text) - 1}
+      _follow.text = "已关注"
+    else
+      关注数量 = {[1] = tointeger(_star.Text) + 1, [2] = tointeger(_star.Text)}
+      _follow.text = "未关注"
+    end
+
+    loadglide(usericon, tab.author.avatar_url)
+    提问者数据 = tab.author
+    askername.text = tab.author.name
+    askerheadline.text = tab.author.headline ~= "" and tab.author.headline or "暂无签名"
+    用户id = tab.author.id
+    following.Text = tab.author.is_following and "取关" or "关注"
+
+    pop = {
+      tittle = "问题",
+      list = {
+        {src = 图标("share"), text = "分享", onClick = function()
+            local format = "【问题】%s：%s"
+            分享文本(string.format(format, title.text, "https://www.zhihu.com/question/" .. question_id))
+          end,
+          onLongClick = function()
+            local format = "【问题】%s：%s"
+            分享文本(string.format(format, title.text, "https://www.zhihu.com/question/" .. question_id), true)
+        end},
+        {src = 图标("list_alt"), text = "问题日志", onClick = function()
+            newActivity("browser", {"https://www.zhihu.com/question/" .. question_id .. "/log"})
+        end},
+        {src = 图标("format_align_left"), text = "按时间顺序", onClick = function()
+            question_pagetool:setUrlItem(question_base:getUrl("updated")):clearItem():refer(nil, nil, true)
+        end},
+        {src = 图标("notes"), text = "按默认顺序", onClick = function()
+            question_pagetool:setUrlItem(question_base:getUrl()):clearItem():refer(nil, nil, true)
+        end},
+      }
+    }
+    a = MUKPopu(pop)
+  end)
+end)
+
 设置视图("layout/question")
 设置toolbar(toolbar)
 edgeToedge(nil,nil,function() local layoutParams = topbar.LayoutParams;
@@ -179,83 +249,6 @@ function 问题详情(code)
   show.loadDataWithBaseURL(nil,code,"text/html","utf-8",nil);
   show.Visibility=0
 end
-
-question_base=require "model.question":new(question_id)
-
--- 并行发起问题详情获取和列表初始化
-taskUI(function()
-  question_base:getData(function(tab)
-    if not tab then return end
-
-    -- 核心 UI 更新
-    title.text = tab.title
-    _comment.Text = tostring(tab.comment_count)
-    _star.Text = tostring(tab.follower_count)
-    _title.Text = "共" .. tostring(tab.answer_count) .. "个回答"
-
-    if #tab.excerpt > 0 then
-      description_text.Text = tab.excerpt
-      openroot.visibility = 0
-    else
-      description_card.visibility = 8
-    end
-
-    _root.Visibility = 0
-
-    初始化历史记录数据()
-    保存历史记录(question_id, tab.title, tab.excerpt, "问题")
-
-    -- 非核心 UI 和逻辑移入任务
-    taskUI(100, function()
-      for k, v in pairs(tab.topics) do
-        tags.ids.load.parent.visibility = 0
-        tags:addTab(v.name, function() newActivity("topic", {v.id}) end, 2)
-      end
-
-
-      问题预览 = tab.detail
-
-      if tab.relationship.is_following then
-        关注数量 = {[1] = tointeger(_star.Text), [2] = tointeger(_star.Text) - 1}
-        _follow.text = "已关注"
-      else
-        关注数量 = {[1] = tointeger(_star.Text) + 1, [2] = tointeger(_star.Text)}
-        _follow.text = "未关注"
-      end
-
-      loadglide(usericon, tab.author.avatar_url)
-      提问者数据 = tab.author
-      askername.text = tab.author.name
-      askerheadline.text = tab.author.headline ~= "" and tab.author.headline or "暂无签名"
-      用户id = tab.author.id
-      following.Text = tab.author.is_following and "取关" or "关注"
-
-      pop = {
-        tittle = "问题",
-        list = {
-          {src = 图标("share"), text = "分享", onClick = function()
-              local format = "【问题】%s：%s"
-              分享文本(string.format(format, title.text, "https://www.zhihu.com/question/" .. question_id))
-            end,
-            onLongClick = function()
-              local format = "【问题】%s：%s"
-              分享文本(string.format(format, title.text, "https://www.zhihu.com/question/" .. question_id), true)
-          end},
-          {src = 图标("list_alt"), text = "问题日志", onClick = function()
-              newActivity("browser", {"https://www.zhihu.com/question/" .. question_id .. "/log"})
-          end},
-          {src = 图标("format_align_left"), text = "按时间顺序", onClick = function()
-              question_pagetool:setUrlItem(question_base:getUrl("updated")):clearItem():refer(nil, nil, true)
-          end},
-          {src = 图标("notes"), text = "按默认顺序", onClick = function()
-              question_pagetool:setUrlItem(question_base:getUrl()):clearItem():refer(nil, nil, true)
-          end},
-        }
-      }
-      a = MUKPopu(pop)
-    end)
-  end)
-end)
 
 question_pagetool=question_base:initpage(question_recy,questionsr)
 

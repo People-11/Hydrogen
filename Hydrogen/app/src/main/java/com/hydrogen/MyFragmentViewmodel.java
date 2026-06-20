@@ -6,8 +6,4 @@ public class MyFragmentViewmodel extends ViewModel {
     String mLuaFilePath;
     HashMap mGlobal;
     Object[] mArgs;
-    
-    public MyFragmentViewmodel() {
-        
-    }
 }

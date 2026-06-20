@@ -234,9 +234,7 @@ for k, v in pairs(simpleTips) do
   clickfunc[k] = function() 提示(v) end
 end
 
-clickfunc["清理软件缓存"] = function()
-  清理内存()
-end
+clickfunc["清理软件缓存"] = 清理内存
 
 clickfunc["关于"] = function()
   newActivity("sub/About/main")
@@ -581,12 +579,12 @@ adp = luajava.override(BaseAdapter, {
 
       for key, val in pairs(item) do
         if key == "type" then continue end
-        if luajava.instanceof(holder[key], TextView) then
-          holder[key].text = tostring(val)
-         elseif type(val) == "table" then
+        if type(val) == "table" then
           for subK, subV in pairs(val) do
             holder[key][subK] = subV
           end
+         elseif luajava.instanceof(holder[key], TextView) then
+          holder[key].text = tostring(val)
         end
       end
 
@@ -603,13 +601,10 @@ adp = luajava.override(BaseAdapter, {
         if holder.slider and item.slider then
           holder.slider.addOnChangeListener(Slider.OnChangeListener {
             onValueChange = function(slider, value, fromUser)
-              if fromUser then
-                item.slider.value = value
-                this.setSharedData(item._key, tostring(value))
-                if clickfunc[item.subtitle] then
-                  clickfunc[item.subtitle](slider, value, fromUser)
-                end
-              end
+              if not fromUser then return end
+              item.slider.value = value
+              this.setSharedData(item._key, tostring(value))
+              if clickfunc[item.subtitle] then clickfunc[item.subtitle](slider, value, fromUser) end
             end
           })
          else
