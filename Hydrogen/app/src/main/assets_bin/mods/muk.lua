@@ -431,10 +431,7 @@ function get_number_and_following(str)
 end
 
 function numtostr(num)
-  if num>10000 then
-    num=tostring(math_floor(num/10000)).."万"
-  end
-  return tostring(num)
+  return num>10000 and tostring(math_floor(num/10000)).."万" or tostring(num)
 end
 
 function 点击事件判断(myid,title,extra)
@@ -503,7 +500,7 @@ local handler=Handler()
 ---@param delay number 延迟
 ---@return function runnable 节流运行
 function throttle(func,delay)
-  local args={}
+  local args
   local runnable=Runnable({run=function()
       func(table.unpack(args,1,args.length))
   end})
@@ -521,7 +518,7 @@ end
 ---@param delay number 延迟
 ---@return function runnable 防抖运行
 function debounce(func,delay)
-  local args={}
+  local args
   local runnable=Runnable({run=function()
       func(table.unpack(args,1,args.length))
   end})
@@ -549,17 +546,6 @@ function taskUI(delay, func)
   end
 end
 
-function tokb(m)
-  if m<=1024 then
-    return m.."B"
-   elseif m<=(1024^2) then
-    return (math_floor((m/1024*100)+0.5)/100).."KB"
-   elseif m<=(1024^3) then
-    return (math_floor((m/(1024^2)*100)+0.5)/100).."MB"
-   elseif m<=(1024^4) then
-    return (math_floor((m/(1024^3)*100)+0.5)/100).."GB"
-  end
-end
 
 function Ripple(id,color,t)
   local ripple
@@ -633,11 +619,6 @@ function dp2px(dpValue,isreal)
 end
 
 function px2dp(pxValue,isreal)
-  local scale = isreal and real_scale or _defaultScale
-  return pxValue / scale + 0.5
-end
-
-function px2sp(pxValue,isreal)
   local scale = isreal and real_scale or _defaultScale
   return pxValue / scale + 0.5
 end
@@ -824,6 +805,7 @@ function dec2hex(n)
 end
 
 function 转0x(j,isAndroid)
+  local jj,jjj
   if #j==7 then
     jj=j:match("#(.+)")
     jjj=tonumber("0xff"..jj)
@@ -831,7 +813,6 @@ function 转0x(j,isAndroid)
     jj=j:match("#(.+)")
     jjj=tonumber("0x"..jj)
   end
-  -- 如果安卓的颜色值大于2^31-1，那么它是一个负数，需要减去2^32
   if isAndroid and jjj > 2^31 - 1 then
     jjj = tointeger(jjj - 2^32)
   end
@@ -1075,10 +1056,6 @@ function 控件显示(a)
   a.setVisibility(View.VISIBLE)
 end
 
-function 控件可见(a)
-  a.setVisibility(View.VISIBLE)
-end
-
 function 控件不可见(a)
   a.setVisibility(View.INVISIBLE)
 end
@@ -1223,11 +1200,7 @@ end
 
 
 function 内置存储文件(u)
-  if u =="" or u==nil then
-    return 内置存储("Hydrogen/")
-   else
-    return 内置存储("Hydrogen/"..u)
-  end
+  return 内置存储("Hydrogen/" .. (u or ""))
 end
 
 
@@ -1252,11 +1225,7 @@ function 追加更新文件(path, content)
 end
 
 function 文件夹是否存在(file)
-  if File(file).isDirectory()then
-    return true
-   else
-    return false
-  end
+  return File(file).isDirectory()
 end
 
 function 移动文件(旧,新)
@@ -1268,19 +1237,11 @@ function 移动文件(旧,新)
 end
 
 function 跳转页面(ym,cs)
-  if cs then
-    newActivity(ym,cs)
-   else
-    newActivity(ym)
-  end
+  newActivity(ym,cs)
 end
 
 function 渐变跳转页面(ym,cs)
-  if cs then
-    activity.newActivity(ym,android.R.anim.fade_in,android.R.anim.fade_out,cs)
-   else
-    activity.newActivity(ym,android.R.anim.fade_in,android.R.anim.fade_out)
-  end
+  activity.newActivity(ym,android.R.anim.fade_in,android.R.anim.fade_out,cs)
 end
 
 
@@ -1953,14 +1914,6 @@ utf8.findTable=function(str,tab)
   return false
 end
 
---table.join
-
---参数 oldtable,addtable
-function table.join(old,add)
-  for k,v in pairs(add) do
-    old[k]=v
-  end
-end
 
 function 加入默认收藏夹(回答id,收藏类型,func)
 
@@ -2659,11 +2612,7 @@ function table.swap(数据, 查找位置, 替换位置, ismode)
 end
 
 function getLogin()
-  if activity.getSharedData("idx") then
-    return true
-   else
-    return false
-  end
+  return activity.getSharedData("idx") ~= nil
 end
 
 if not this.getSharedData("udid") then

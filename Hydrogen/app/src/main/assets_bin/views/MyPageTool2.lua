@@ -249,6 +249,11 @@ function Page_Tool:addPage(addtype,mydata,deftab)--新建Page
 end
 
 
+local function _resetCanclick(canclick, pos)
+  canclick[pos]=false
+  Handler().postDelayed(Runnable({run=function() canclick[pos]=true end}),1050)
+end
+
 function Page_Tool:setOnTabListener(callback)
   local view=self.tabview
   local canclick=self.canclick
@@ -258,45 +263,23 @@ function Page_Tool:setOnTabListener(callback)
     error("你必须首先调用createfunc来创建一个刷新的函数")
   end
 
-
   local callback=callback or function() end
 
   view.addOnTabSelectedListener(TabLayout.OnTabSelectedListener {
     onTabSelected=function(tab)
-      --选择时触发
       local pos=tab.getPosition()+1-self.addpos
-
       callback(self,pos)
-
-      if pos>0 and canclick[pos] then
-        canclick[pos]=false
-        Handler().postDelayed(Runnable({
-          run=function()
-            canclick[pos]=true
-          end,
-        }),1050)
-      end
+      if pos>0 and canclick[pos] then _resetCanclick(canclick,pos) end
       self:refer(pos,false,true)
     end,
 
     onTabUnselected=function(tab)
-      --未选择时触发
     end,
 
     onTabReselected=function(tab)
-      --选中之后再次点击即复选时触发
       local pos=tab.getPosition()+1-self.addpos
-
       callback(self,pos)
-
-      if pos>0 and canclick[pos] then
-        canclick[pos]=false
-        Handler().postDelayed(Runnable({
-          run=function()
-            canclick[pos]=true
-          end,
-        }),1050)
-      end
+      if pos>0 and canclick[pos] then _resetCanclick(canclick,pos) end
       self:refer(pos,true,false,true)
     end,
   });
@@ -304,27 +287,14 @@ function Page_Tool:setOnTabListener(callback)
 end
 
 local function checkIfRecyclerViewIsFullPage(recyclerView)
-  local layoutManager = recyclerView.getLayoutManager();
-  local lastVisiblePosition = layoutManager.findLastVisibleItemPosition();
-  local totalItemCount = recyclerView.getAdapter().getItemCount();
-  if lastVisiblePosition >= totalItemCount - 1 then
-    return true;
-  end
-  return false;
+  local lm = recyclerView.getLayoutManager()
+  return lm.findLastVisibleItemPosition() >= recyclerView.getAdapter().getItemCount() - 1
 end
 
 function Page_Tool:createfunc()
 
   if self.referfunc then
     error("referfunc已创建 只能存在一个referfunc")
-  end
-
-  if not self.funcs then
-    error("创建referfunc时必须拥有自身funcs属性")
-  end
-
-  if not self.adapters then
-    error("创建referfunc时必须拥有自身adapters属性")
   end
 
   local needlogin=self.needlogin

@@ -83,7 +83,7 @@ function 合成文本(type, htmlText)
   -- 创建一个 SpannableString 对象来存储类型文本
   local typeText = SpannableString(type);
   -- 获取类型文本的长度
-  local numCharsToChange = String(type).length();
+  local numCharsToChange = String(type).length()
   -- 设置文本的大小和垂直居中
   typeText.setSpan(CustomVerticalCenterSpan, 0, numCharsToChange, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
   -- 创建一个 SpannableString 对象来组合类型文本和 HTML 文本
@@ -149,7 +149,7 @@ function 加载历史记录()
   end
 end
 
-for i,v in ipairs(mytab) do
+for _,v in ipairs(mytab) do
   histab:addTab(v,function()
     adp.clear()
     find_type=v

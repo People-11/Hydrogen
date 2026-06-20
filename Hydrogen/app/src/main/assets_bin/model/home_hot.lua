@@ -81,12 +81,7 @@ function base:getAdapter(home_pagetool,pos)
     end,
 
     getItemViewType=function(position)
-      local data=self.myhotdata[position+1]
-      if data.热图片.Visibility==0 then
-        return 0
-       else
-        return 1
-      end
+      return self.myhotdata[position+1].热图片.Visibility==0 and 0 or 1
     end,
 
     onCreateViewHolder=function(parent,viewType)

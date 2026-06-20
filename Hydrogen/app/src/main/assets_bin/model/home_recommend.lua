@@ -1,11 +1,6 @@
 local base={}
 
 
--- 性能优化：缓存常用路径和数据
-local cache_file_path = nil
-local recommend_history = nil
-local recommend_history_loaded = false
-
 function base:new(id)--类的new方法
   local child=table.clone(self)
   child.id=id
@@ -16,54 +11,6 @@ end
 recommend_data={}
 homeapphead=table.clone(head)
 homeapphead["x-close-recommend"]="0"
-
-local accessibilityManager = this.getSystemService(Context.ACCESSIBILITY_SERVICE);
-
--- 性能优化：异步加载历史记录缓存
-local function loadRecommendHistory()
-  if recommend_history_loaded then
-    return recommend_history or {}
-  end
-  
-  -- 缓存文件路径，避免重复拼接
-  if not cache_file_path then
-    cache_file_path = tostring(activity.getExternalCacheDir()) .. "/rc.json"
-  end
-  
-  if File(cache_file_path).exists() then
-    local success, result = pcall(function()
-      local file = io.open(cache_file_path, "r")
-      if file then
-        local content = file:read("*a")
-        file:close()
-        return luajson.decode(content)
-      end
-      return {}
-    end)
-    recommend_history = success and result or {}
-   else
-    recommend_history = {}
-  end
-  
-  recommend_history_loaded = true
-  return recommend_history
-end
-
--- 性能优化：异步保存历史记录
-local function saveRecommendHistory()
-  if not recommend_history or not cache_file_path then return end
-  
-  -- 使用 taskUI 将文件写入移到后台
-  taskUI(function()
-    pcall(function()
-      local file = io.open(cache_file_path, "w")
-      if file then
-        file:write(luajson.encode(recommend_history))
-        file:close()
-      end
-    end)
-  end)
-end
 
 function base.resolvedata(v,data)
   if v.type~="feed" then
@@ -80,34 +27,6 @@ function base.resolvedata(v,data)
   local 作者=v.author.name
   local 预览内容=作者.." : "..(v.excerpt or v.excerpt_title)
   
-  local feed_cache_limit = tointeger(activity.getSharedData("feed_cache"))
-  if feed_cache_limit and feed_cache_limit > 1 then
-    -- 性能优化：使用缓存的历史记录
-    local history = loadRecommendHistory()
-    
-    if table.find(history, 预览内容) then
-      --开启无障碍后不提示找到重复内容
-      if activity.getSharedData("feed_cache_tip") == "true" and not accessibilityManager.isTouchExplorationEnabled() then
-        提示("找到重复内容")
-      end
-      -- 性能优化：缓存编码结果
-      local encoded_data = luajson.encode(readdata)
-      local postdata = string.format('targets=%s', urlEncode('[["r",' .. encoded_data .. ']]'))
-      
-      zHttp.post("https://api.zhihu.com/lastread/touch/v2", postdata, apphead, function(code,content)
-        if code==200 then
-        end
-      end)
-      return
-     else
-      if #history > feed_cache_limit then
-        table.remove(history, 1)
-      end
-      table.insert(history, 预览内容)
-      -- 性能优化：异步保存
-      saveRecommendHistory()
-    end
-  end
   local id=v.id
   local 分割字符串
 
@@ -229,21 +148,22 @@ function base.getAdapter(home_pagetool,pos)
       end
 
       views.card.onLongClick=function(view)
-        if tostring(data.id内容):find("文章分割") then
+        local id内容=data.id内容
+        if id内容:find("文章分割") then
           mytype="article"
-          myid=tostring(data.id内容):match("文章分割(.+)")
-         elseif tostring(data.id内容):find("想法分割") then
+          myid=id内容:match("文章分割(.+)")
+         elseif id内容:find("想法分割") then
           mytype="pin"
-          myid=tostring(data.id内容):match("想法分割(.+)")
-         elseif tostring(data.id内容):find("视频分割") then
+          myid=id内容:match("想法分割(.+)")
+         elseif id内容:find("视频分割") then
           mytype="zvideo"
-          myid=tostring(data.id内容):match("视频分割(.+)")
-         elseif tostring(data.id内容):find("直播分割") then
+          myid=id内容:match("视频分割(.+)")
+         elseif id内容:find("直播分割") then
           mytype="drama"
-          myid=tostring(data.id内容):match("直播分割(.+)")
+          myid=id内容:match("直播分割(.+)")
          else
           mytype="answer"
-          myid=tostring(data.id内容):match("分割(.+)")
+          myid=id内容:match("分割(.+)")
         end
         zHttp.get("https://api.zhihu.com/negative-feedback/panel?scene_code=RECOMMEND&content_type="..mytype.."&content_token="..myid,apphead,function(code,content)
           if code==200 then
